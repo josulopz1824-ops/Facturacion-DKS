@@ -36,6 +36,8 @@
         .btn-delete { background: none; border: 1px solid var(--danger); color: var(--danger); font-size: 0.7rem; width: auto; padding: 5px 10px; cursor: pointer; }
         .btn-edit { background: none; border: 1px solid var(--dorado); color: var(--dorado); font-size: 0.7rem; width: auto; padding: 5px 10px; margin-right: 5px; cursor: pointer; }
 
+        .badge-medida { background: #333; color: var(--dorado); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 5px; text-transform: uppercase; }
+
         .divider { border-top: 1px solid #333; margin: 25px 0; position: relative; }
         .divider span { position: absolute; top: -12px; left: 20px; background: var(--card); padding: 0 10px; color: #666; font-size: 0.7rem; font-weight: bold; }
 
@@ -53,9 +55,20 @@
             <input type="hidden" id="prodId"> 
             <input type="text" id="nombre" placeholder="Nombre (ej. Tubo PVC)">
             <input type="text" id="categoria" placeholder="Categoría">
-            <input type="number" id="stock" placeholder="Stock Inicial">
-            <input type="number" id="min" placeholder="Stock Mínimo">
-            <input type="number" id="precio" placeholder="Precio Venta">
+            
+            <label style="font-size: 0.7rem; color: #888; display: block; margin-bottom: 5px;">Unidad de Venta:</label>
+            <select id="medida">
+                <option value="unidad">Unidad (pza)</option>
+                <option value="metro">Metro (m)</option>
+                <option value="libra">Libra (lb)</option>
+                <option value="kilogramo">Kilogramo (kg)</option>
+                <option value="yarda">Yarda (yd)</option>
+                <option value="saco">Saco / Bolsa</option>
+            </select>
+
+            <input type="number" id="stock" placeholder="Stock Inicial" step="0.01">
+            <input type="number" id="min" placeholder="Stock Mínimo" step="0.01">
+            <input type="number" id="precio" placeholder="Precio Venta" step="0.01">
             
             <button class="btn btn-gold" id="btnGuardar">GUARDAR EN INVENTARIO</button>
             <button class="btn" id="btnCancelar" style="display:none; background:#333; color:white;">CANCELAR EDICIÓN</button>
@@ -66,7 +79,7 @@
             <select id="selectProductoEntrada">
                 <option value="">Seleccione producto...</option>
             </select>
-            <input type="number" id="cantidadEntrada" placeholder="Cantidad a sumar">
+            <input type="number" id="cantidadEntrada" placeholder="Cantidad a sumar" step="0.01">
             <button class="btn btn-success" id="btnSumarStock">AÑADIR AL STOCK</button>
         </div>
 
@@ -93,7 +106,6 @@
         from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let empresaActual = "";
-        let productosLocal = []; // Para llenar el select de entrada rápida
 
         async function iniciar() {
             const usuario = await verificarPermisos();
@@ -115,40 +127,40 @@
                 
                 tbody.innerHTML = "";
                 selectEntrada.innerHTML = '<option value="">Seleccione producto...</option>';
-                productosLocal = [];
 
                 snapshot.forEach((d) => {
                     const p = d.data();
                     const isLow = p.stock <= p.min;
+                    const medidaTexto = p.medida || "unidad";
                     
-                    // Llenar tabla
                     tbody.innerHTML += `
                         <tr class="${isLow ? 'low-stock' : ''}">
                             <td><b>${p.nombre}</b> ${isLow ? '⚠️' : ''}</td>
                             <td>${p.categoria}</td>
-                            <td style="color: ${isLow ? 'var(--danger)' : 'var(--success)'}">${p.stock}</td>
+                            <td style="color: ${isLow ? 'var(--danger)' : 'var(--success)'}">
+                                ${p.stock} <span class="badge-medida">${medidaTexto}</span>
+                            </td>
                             <td>L. ${p.precio.toFixed(2)}</td>
                             <td>
-                                <button onclick="prepararEdicion('${d.id}', '${p.nombre}', '${p.categoria}', ${p.stock}, ${p.min}, ${p.precio})" class="btn-edit">EDITAR</button>
+                                <button onclick="prepararEdicion('${d.id}', '${p.nombre}', '${p.categoria}', ${p.stock}, ${p.min}, ${p.precio}, '${medidaTexto}')" class="btn-edit">EDITAR</button>
                                 <button onclick="eliminarProducto('${d.id}')" class="btn-delete">BORRAR</button>
                             </td>
                         </tr>
                     `;
 
-                    // Llenar select de carga rápida
-                    selectEntrada.innerHTML += `<option value="${d.id}">${p.nombre} (Actual: ${p.stock})</option>`;
+                    selectEntrada.innerHTML += `<option value="${d.id}">${p.nombre} (${p.stock} ${medidaTexto})</option>`;
                 });
             });
         }
 
-        // --- GUARDAR O EDITAR ---
         document.getElementById('btnGuardar').onclick = async () => {
             const id = document.getElementById('prodId').value;
             const data = {
-                nombre: document.getElementById('nombre').value,
-                categoria: document.getElementById('categoria').value,
-                stock: parseInt(document.getElementById('stock').value) || 0,
-                min: parseInt(document.getElementById('min').value) || 0,
+                nombre: document.getElementById('nombre').value.toUpperCase(),
+                categoria: document.getElementById('categoria').value.toUpperCase(),
+                medida: document.getElementById('medida').value,
+                stock: parseFloat(document.getElementById('stock').value) || 0,
+                min: parseFloat(document.getElementById('min').value) || 0,
                 precio: parseFloat(document.getElementById('precio').value) || 0,
                 empresa: empresaActual,
                 ultimaMod: serverTimestamp()
@@ -159,7 +171,7 @@
             try {
                 if(id) {
                     await updateDoc(doc(db, "productos", id), data);
-                    Swal.fire('Actualizado', 'Producto modificado con éxito', 'success');
+                    Swal.fire('Actualizado', 'Producto modificado', 'success');
                 } else {
                     await addDoc(collection(db, "productos"), data);
                     Swal.fire('Guardado', 'Nuevo producto añadido', 'success');
@@ -170,20 +182,17 @@
             }
         };
 
-        // --- ENTRADA RÁPIDA DE STOCK ---
         document.getElementById('btnSumarStock').onclick = async () => {
             const id = document.getElementById('selectProductoEntrada').value;
-            const cantidad = parseInt(document.getElementById('cantidadEntrada').value);
+            const cantidad = parseFloat(document.getElementById('cantidadEntrada').value);
 
             if(!id || isNaN(cantidad) || cantidad <= 0) {
-                return Swal.fire('Atención', 'Seleccione un producto y una cantidad válida', 'warning');
+                return Swal.fire('Atención', 'Datos de entrada inválidos', 'warning');
             }
 
             try {
-                const prodRef = doc(db, "productos", id);
-                await updateDoc(prodRef, { stock: increment(cantidad) });
+                await updateDoc(doc(db, "productos", id), { stock: increment(cantidad) });
                 
-                // Registro de movimiento para el historial (Kardex)
                 await addDoc(collection(db, "movimientos_inventario"), {
                     productoId: id,
                     tipo: "ENTRADA",
@@ -192,7 +201,7 @@
                     empresa: empresaActual
                 });
 
-                Swal.fire('Stock Actualizado', `Se sumaron ${cantidad} unidades.`, 'success');
+                Swal.fire('Stock Actualizado', `Se sumaron ${cantidad} al inventario.`, 'success');
                 document.getElementById('cantidadEntrada').value = "";
                 document.getElementById('selectProductoEntrada').value = "";
             } catch (e) {
@@ -200,26 +209,23 @@
             }
         };
 
-        // --- FUNCIONES GLOBALES ---
         window.eliminarProducto = async (id) => {
             const result = await Swal.fire({
-                title: '¿Eliminar producto?',
-                text: "Esta acción no se puede deshacer",
+                title: '¿Eliminar?',
+                text: "No podrás recuperar este producto",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: 'var(--danger)',
                 confirmButtonText: 'Sí, borrar'
             });
-
-            if(result.isConfirmed) {
-                await deleteDoc(doc(db, "productos", id));
-            }
+            if(result.isConfirmed) await deleteDoc(doc(db, "productos", id));
         };
 
-        window.prepararEdicion = (id, nombre, cat, stock, min, precio) => {
+        window.prepararEdicion = (id, nombre, cat, stock, min, precio, med) => {
             document.getElementById('prodId').value = id;
             document.getElementById('nombre').value = nombre;
             document.getElementById('categoria').value = cat;
+            document.getElementById('medida').value = med;
             document.getElementById('stock').value = stock;
             document.getElementById('min').value = min;
             document.getElementById('precio').value = precio;
@@ -232,6 +238,7 @@
             document.getElementById('prodId').value = "";
             document.getElementById('nombre').value = "";
             document.getElementById('categoria').value = "";
+            document.getElementById('medida').value = "unidad";
             document.getElementById('stock').value = "";
             document.getElementById('min').value = "";
             document.getElementById('precio').value = "";
@@ -242,5 +249,4 @@
         document.getElementById('btnCancelar').onclick = resetForm;
     </script>
 </body>
-
 </html>
