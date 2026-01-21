@@ -108,83 +108,79 @@
     </style>
 
     <script type="module">
-        import { auth, db, verificarPermisos } from './auth-facturacion.js';
-        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { auth, db, verificarPermisos } from './auth-facturacion.js';
+    import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-        async function protegerDashboard() {
-            // Obtenemos los datos del usuario (rol y empresa)
+    async function iniciarDashboard() {
+        try {
+            // 1. ESPERAMOS a que la función central nos diga quién es el usuario
             const usuario = await verificarPermisos();
             
-            if (usuario) {
-                // Actualizar nombre de empresa en el footer
-                document.getElementById('nombreEmpresaFooter').innerText = usuario.empresa;
-
-                // --- LÓGICA DE ROLES MEJORADA ---
-                if (usuario.rol === "admin") {
-                    console.log("Modo Administrador: Todas las funciones activas.");
-                    document.getElementById("tarjeta-configuracion").style.display = "flex";
-                    document.getElementById("tarjeta-reportes").style.display = "flex";
-                    document.getElementById("tarjeta-diario").style.display = "flex";
-                    document.getElementById("tarjeta-historial").style.display = "flex";
-                } else {
-                    console.log("Modo Cajero: Funciones restringidas.");
-                    // Ocultamos tarjetas sensibles
-                    document.getElementById("tarjeta-reportes").style.display = "none";
-                    document.getElementById("tarjeta-diario").style.display = "none";
-                    document.getElementById("tarjeta-historial").style.display = "none";
-                    document.getElementById("tarjeta-configuracion").style.display = "none";
-                }
-
-                // Verificar si necesita configuración inicial
-                verificarConfiguracion(auth.currentUser.uid);
-            }
-        }
-
-        async function verificarConfiguracion(uid) {
-            try {
-                const userDoc = await getDoc(doc(db, "users", uid));
-                if (userDoc.exists()) {
-                    const data = userDoc.data();
-                    if (!data.configurado) {
-                        document.getElementById('modalConfig').style.display = 'flex';
-                    } else {
-                        localStorage.setItem('dks_categorias', JSON.stringify(data.categorias));
-                    }
-                }
-            } catch (error) {
-                console.error("Error al leer configuración:", error);
-            }
-        }
-
-        // Ejecutar protección al cargar
-        protegerDashboard();
-
-        window.guardarConfiguracion = async function() {
-            const checkboxes = document.querySelectorAll('.filtro-negocio:checked');
-            let elegidas = Array.from(checkboxes).map(cb => cb.value);
-
-            if (elegidas.length === 0) {
-                alert("Seleccione al menos un tipo de negocio.");
+            if (!usuario) {
+                // Si no hay usuario, la función verificarPermisos ya redirige a login,
+                // pero por seguridad cortamos la ejecución aquí.
                 return;
             }
 
-            const user = auth.currentUser;
-            if (user) {
-                try {
-                    await updateDoc(doc(db, "users", user.uid), {
-                        categorias: elegidas,
-                        configurado: true
-                    });
-                    localStorage.setItem('dks_categorias', JSON.stringify(elegidas));
-                    document.getElementById('modalConfig').style.display = 'none';
-                    window.location.reload();
-                } catch (e) {
-                    console.error("Error al guardar:", e);
-                }
+            // 2. ACTUALIZAMOS LA INTERFAZ (Ya es seguro porque tenemos los datos)
+            document.getElementById('nombreEmpresaFooter').innerText = usuario.empresa;
+
+            if (usuario.rol === "admin") {
+                console.log("🔥 Modo Administrador: Acceso total.");
+                document.getElementById("tarjeta-configuracion").style.display = "flex";
+                document.getElementById("tarjeta-reportes").style.display = "flex";
+                document.getElementById("tarjeta-diario").style.display = "flex";
+                document.getElementById("tarjeta-historial").style.display = "flex";
+            } else {
+                console.log("👤 Modo Cajero: Funciones restringidas.");
+                // Ocultamos tarjetas sensibles
+                ["tarjeta-reportes", "tarjeta-diario", "tarjeta-historial", "tarjeta-configuracion"].forEach(id => {
+                    document.getElementById(id).style.display = "none";
+                });
             }
-        };
-    </script>
+
+            // 3. VERIFICAR CONFIGURACIÓN (Usamos la data que ya trajo verificarPermisos)
+            if (!usuario.configurado) {
+                document.getElementById('modalConfig').style.display = 'flex';
+            } else {
+                localStorage.setItem('dks_categorias', JSON.stringify(usuario.categorias));
+            }
+
+        } catch (error) {
+            console.error("Error al cargar el Dashboard:", error);
+        }
+    }
+
+    // Ejecutamos la función de inicio
+    iniciarDashboard();
+
+    // Función global para guardar configuración
+    window.guardarConfiguracion = async function() {
+        const checkboxes = document.querySelectorAll('.filtro-negocio:checked');
+        let elegidas = Array.from(checkboxes).map(cb => cb.value);
+
+        if (elegidas.length === 0) {
+            alert("Seleccione al menos un tipo de negocio.");
+            return;
+        }
+
+        const user = auth.currentUser;
+        if (user) {
+            try {
+                await updateDoc(doc(db, "users", user.uid), {
+                    categorias: elegidas,
+                    configurado: true
+                });
+                localStorage.setItem('dks_categorias', JSON.stringify(elegidas));
+                document.getElementById('modalConfig').style.display = 'none';
+                window.location.reload();
+            } catch (e) {
+                console.error("Error al guardar:", e);
+                alert("Error de permisos al guardar. Asegúrese de estar logueado.");
+            }
+        }
+    };
+</script>
 </head>
 <body>
 
@@ -274,4 +270,5 @@
         actualizarReloj();
     </script>
 </body>
+
 </html>
