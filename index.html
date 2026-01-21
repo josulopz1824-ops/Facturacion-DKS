@@ -58,11 +58,11 @@
     </div>
 
     <script type="module">
-        // Importamos auth y db desde tu archivo central de configuración
         import { auth, db } from './auth-facturacion.js';
         import { 
             signInWithEmailAndPassword, 
-            createUserWithEmailAndPassword 
+            createUserWithEmailAndPassword,
+            deleteUser 
         } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { 
             doc, 
@@ -100,36 +100,34 @@
             }
         };
 
-        // FUNCIÓN: REGISTRARSE (SISTEMA MULTI-EMPRESA)
+        // FUNCIÓN: REGISTRARSE (ORDEN CORREGIDO PARA SEGURIDAD)
         document.getElementById('btnRegister').onclick = async () => {
             const email = document.getElementById('user').value;
             const pass = document.getElementById('pass').value;
 
-            if(!email || !pass) {
-                mostrarError("Ingresa correo y clave para registrarte");
+            if(!email || !pass || pass.length < 6) {
+                mostrarError("Email y clave (min 6 caracteres) requeridos");
                 return;
             }
 
-            if(pass.length < 6) {
-                mostrarError("La clave debe tener al menos 6 caracteres");
-                return;
-            }
-
-            // 1. Pedir el nombre del negocio antes de crear el usuario
+            // 1. Pedir nombre de negocio primero
             const { value: nombreNegocio } = await Swal.fire({
                 title: 'Nombre de tu Negocio',
                 input: 'text',
-                inputLabel: '¿Para qué empresa o tienda trabajas?',
                 inputPlaceholder: 'Ej: Ferretería El Amigo',
                 showCancelButton: true,
-                confirmButtonColor: '#d4af37',
-                cancelButtonText: 'Cancelar'
+                confirmButtonColor: '#d4af37'
             });
 
             if (!nombreNegocio) return;
 
             try {
-                // 2. Buscar si el negocio ya existe
+                // 2. CREAMOS EL USUARIO PRIMERO
+                // Esto nos da el "permiso" para que Firestore nos deje leer negocios.
+                const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+                const user = userCredential.user;
+
+                // 3. BUSCAR NEGOCIO (Ahora ya tenemos request.auth != null)
                 const negociosRef = collection(db, "negocios");
                 const q = query(negociosRef, where("nombre", "==", nombreNegocio.trim().toUpperCase()));
                 const querySnapshot = await getDocs(q);
@@ -138,56 +136,48 @@
                 let empresaID = nombreNegocio.trim().toUpperCase().replace(/\s+/g, '_');
 
                 if (!querySnapshot.empty) {
-                    // EL NEGOCIO EXISTE: Validar clave de acceso de empleado
+                    // NEGOCIO EXISTE
                     const docNegocio = querySnapshot.docs[0];
                     const datosNegocio = docNegocio.data();
                     empresaID = docNegocio.id;
 
                     const { value: claveAcceso } = await Swal.fire({
                         title: 'Negocio Detectado',
-                        text: `El negocio "${nombreNegocio}" ya existe. Ingresa la clave de acceso proporcionada por tu jefe:`,
+                        text: `Ingresa la clave de empleado para "${nombreNegocio}":`,
                         input: 'password',
-                        inputPlaceholder: 'Clave de acceso',
-                        showCancelButton: true
+                        confirmButtonColor: '#d4af37'
                     });
 
                     if (claveAcceso === datosNegocio.clave) {
                         rolFinal = "cajero";
                     } else {
-                        Swal.fire('Error', 'Clave de acceso incorrecta para este negocio.', 'error');
+                        // Si la clave es mala, borramos el usuario creado para no dejar basura
+                        await deleteUser(user);
+                        Swal.fire('Error', 'Clave de acceso incorrecta.', 'error');
                         return;
                     }
                 } else {
-                    // NEGOCIO NUEVO: Registrarlo en la DB
+                    // NEGOCIO NUEVO
                     await setDoc(doc(db, "negocios", empresaID), {
                         nombre: nombreNegocio.trim().toUpperCase(),
                         dueno_email: email,
-                        clave: "1234" // Clave por defecto para sus futuros empleados
+                        clave: "1234"
                     });
                 }
 
-                // 3. Crear el usuario en Auth
-                const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
-                const user = userCredential.user;
-
-                // 4. Crear el perfil de usuario vinculado a la empresa
+                // 4. CREAR PERFIL DE USUARIO
                 await setDoc(doc(db, "users", user.uid), {
                     email: email,
                     rol: rolFinal,
                     empresa: empresaID,
+                    configurado: false,
                     fecha_registro: new Date()
-                });
-
-                await Swal.fire({
-                    title: '¡Éxito!',
-                    text: `Te has unido a ${nombreNegocio} como ${rolFinal.toUpperCase()}`,
-                    icon: 'success',
-                    confirmButtonColor: '#d4af37'
                 });
 
                 window.location.href = "dashboard.html";
 
             } catch (error) {
+                console.error("Error en registro:", error);
                 manejarErrores(error.code);
             }
         };
@@ -198,27 +188,13 @@
         }
 
         function manejarErrores(codigo) {
-            console.log("Error Firebase:", codigo);
             switch (codigo) {
-                case 'auth/user-not-found':
-                case 'auth/wrong-password':
-                case 'auth/invalid-credential':
-                    mostrarError("Credenciales incorrectas");
-                    break;
-                case 'auth/email-already-in-use':
-                    mostrarError("El correo ya está registrado");
-                    break;
-                case 'auth/invalid-email':
-                    mostrarError("Formato de correo inválido");
-                    break;
-                case 'auth/weak-password':
-                    mostrarError("Contraseña muy débil");
-                    break;
-                default:
-                    mostrarError("Error de conexión al servidor");
+                case 'auth/invalid-credential': mostrarError("Datos incorrectos"); break;
+                case 'auth/email-already-in-use': mostrarError("El correo ya existe"); break;
+                case 'auth/weak-password': mostrarError("Clave muy débil"); break;
+                default: mostrarError("Error de conexión o servidor");
             }
         }
     </script>
 </body>
-
 </html>
