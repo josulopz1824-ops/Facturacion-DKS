@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <link rel="stylesheet" href="global-styles.css?v=1.0.2">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#050505">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | DKS-Hardware Cloud</title>
+    <style>
+        :root { --dorado: #d4af37; --bg: #050505; --card: #121212; }
+        body { 
+            background: var(--bg); 
+            color: white; 
+            font-family: 'Segoe UI', sans-serif; 
+            margin: 0; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            min-height: 100vh;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 50px 20px;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .logo-container { text-align: center; margin-bottom: 50px; }
+        .logo-container h1 { font-size: 3.5rem; margin: 0; letter-spacing: 5px; }
+        .logo-container p { color: var(--dorado); letter-spacing: 2px; font-weight: bold; }
+
+        .menu-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
+            gap: 25px; 
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .menu-card {
+            background: var(--card);
+            border: 1px solid #222;
+            padding: 40px 20px;
+            border-radius: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.3s;
+            text-decoration: none;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .menu-card:hover {
+            border-color: var(--dorado);
+            transform: translateY(-10px);
+            box-shadow: 0 10px 20px rgba(212, 175, 55, 0.1);
+        }
+
+        /* Estilo especial para la tarjeta de Configuración (Admin) */
+        .admin-only-card {
+            border: 1px dashed #444;
+            background: linear-gradient(145deg, #121212, #0a0a0a);
+        }
+
+        .menu-card h3 { margin: 15px 0 5px 0; font-size: 1.1rem; }
+        .menu-card p { font-size: 0.8rem; color: #666; margin: 0; }
+        .menu-card span { font-size: 3rem; }
+
+        .footer-dks {
+            width: 100%;
+            background: #0a0a0a;
+            border-top: 1px solid #d4af3733;
+            padding: 20px 0;
+            margin-top: 50px;
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        .footer-content {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .footer-brand { color: var(--dorado); font-weight: bold; }
+        .footer-clock { color: white; font-family: monospace; font-size: 1rem; border-left: 2px solid var(--dorado); padding-left: 15px; }
+        .status-dot { width: 8px; height: 8px; background: #2ecc71; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #2ecc71; margin-right: 5px; }
+
+        #modalConfig { color: #333; }
+        .modal-body { background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 0 30px rgba(212,175,55,0.3); }
+    </style>
+
+    <script type="module">
+        import { auth, db, verificarPermisos } from './auth-facturacion.js';
+        import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        async function protegerDashboard() {
+            // Obtenemos los datos del usuario (rol y empresa)
+            const usuario = await verificarPermisos();
+            
+            if (usuario) {
+                // Actualizar nombre de empresa en el footer
+                document.getElementById('nombreEmpresaFooter').innerText = usuario.empresa;
+
+                // --- LÓGICA DE ROLES MEJORADA ---
+                if (usuario.rol === "admin") {
+                    console.log("Modo Administrador: Todas las funciones activas.");
+                    document.getElementById("tarjeta-configuracion").style.display = "flex";
+                    document.getElementById("tarjeta-reportes").style.display = "flex";
+                    document.getElementById("tarjeta-diario").style.display = "flex";
+                    document.getElementById("tarjeta-historial").style.display = "flex";
+                } else {
+                    console.log("Modo Cajero: Funciones restringidas.");
+                    // Ocultamos tarjetas sensibles
+                    document.getElementById("tarjeta-reportes").style.display = "none";
+                    document.getElementById("tarjeta-diario").style.display = "none";
+                    document.getElementById("tarjeta-historial").style.display = "none";
+                    document.getElementById("tarjeta-configuracion").style.display = "none";
+                }
+
+                // Verificar si necesita configuración inicial
+                verificarConfiguracion(auth.currentUser.uid);
+            }
+        }
+
+        async function verificarConfiguracion(uid) {
+            try {
+                const userDoc = await getDoc(doc(db, "users", uid));
+                if (userDoc.exists()) {
+                    const data = userDoc.data();
+                    if (!data.configurado) {
+                        document.getElementById('modalConfig').style.display = 'flex';
+                    } else {
+                        localStorage.setItem('dks_categorias', JSON.stringify(data.categorias));
+                    }
+                }
+            } catch (error) {
+                console.error("Error al leer configuración:", error);
+            }
+        }
+
+        // Ejecutar protección al cargar
+        protegerDashboard();
+
+        window.guardarConfiguracion = async function() {
+            const checkboxes = document.querySelectorAll('.filtro-negocio:checked');
+            let elegidas = Array.from(checkboxes).map(cb => cb.value);
+
+            if (elegidas.length === 0) {
+                alert("Seleccione al menos un tipo de negocio.");
+                return;
+            }
+
+            const user = auth.currentUser;
+            if (user) {
+                try {
+                    await updateDoc(doc(db, "users", user.uid), {
+                        categorias: elegidas,
+                        configurado: true
+                    });
+                    localStorage.setItem('dks_categorias', JSON.stringify(elegidas));
+                    document.getElementById('modalConfig').style.display = 'none';
+                    window.location.reload();
+                } catch (e) {
+                    console.error("Error al guardar:", e);
+                }
+            }
+        };
+    </script>
+</head>
+<body>
+
+    <div class="main-content">
+        <div class="logo-container">
+            <h1>DKS<span style="color:var(--dorado)">-HARDWARE</span></h1>
+            <p>CLOUD MANAGEMENT SYSTEM v1.0</p>
+        </div>
+
+        <div class="menu-grid">
+            <a href="ventas-dks.html" class="menu-card" id="tarjeta-ventas">
+                <span>⚡</span>
+                <h3>PUNTO DE VENTA</h3>
+                <p>Cobros y facturas</p>
+            </a>
+
+            <a href="inventario-ferretero.html" class="menu-card" id="tarjeta-inventario">
+                <span>🛠️</span>
+                <h3>INVENTARIO</h3>
+                <p>Gestión de stock</p>
+            </a>
+
+            <a href="deudores-dks.html" class="menu-card" id="tarjeta-deudores">
+                <span>💸</span>
+                <h3>DEUDORES</h3>
+                <p>Cuentas por cobrar</p>
+            </a>
+
+            <a href="configuracion.html" class="menu-card admin-only-card" id="tarjeta-configuracion" style="display: none;">
+                <span>⚙️</span>
+                <h3 style="color: var(--dorado);">CONFIGURACIÓN</h3>
+                <p>Datos del negocio y RTN</p>
+            </a>
+
+            <a href="reportes.html" class="menu-card" id="tarjeta-reportes">
+                <span>📊</span>
+                <h3>REPORTES</h3>
+                <p>Estado de caja</p>
+            </a>
+
+            <a href="diario-ventas.html" class="menu-card" id="tarjeta-diario">
+                <span>📜</span>
+                <h3>DIARIO DE VENTAS</h3>
+                <p>Movimientos del día</p>
+            </a>
+
+            <a href="historial.html" class="menu-card" id="tarjeta-historial">
+                <span>📂</span>
+                <h3>HISTORIAL</h3>
+                <p>Cierres antiguos</p>
+            </a>
+        </div>
+    </div>
+
+    <footer class="footer-dks">
+        <div class="footer-content">
+            <div>
+                <span class="footer-brand" id="nombreEmpresaFooter">DKS-HARDWARE</span> © 2026<br>
+                <span>Digital Knowledge Solutions</span>
+            </div>
+            <div class="footer-clock" id="relojFooter">00:00:00</div>
+            <div>
+                <span class="status-dot"></span> <span>Cloud Sync: Active</span>
+            </div>
+        </div>
+    </footer>
+
+    <div id="modalConfig" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; align-items:center; justify-content:center;">
+        <div class="modal-body">
+            <h2>Personalice su DKS</h2>
+            <p style="font-size: 0.8rem; color: #666;">Seleccione el giro de su negocio</p>
+            <div style="text-align:left; margin:20px 0;">
+                <label><input type="checkbox" class="filtro-negocio" value="pulperia"> 🥤 Pulpería</label><br><br>
+                <label><input type="checkbox" class="filtro-negocio" value="tienda_ropa"> 👕 Tienda de Ropa</label><br><br>
+                <label><input type="checkbox" class="filtro-negocio" value="papeleria"> ✏️ Papelería</label>
+            </div>
+            <button onclick="guardarConfiguracion()" style="background:#d4af37; color:black; border:none; padding:15px; border-radius:8px; cursor:pointer; font-weight:bold; width:100%;">ACTIVAR SISTEMA</button>
+        </div>
+    </div>
+
+    <script>
+        function actualizarReloj() {
+            const ahora = new Date();
+            document.getElementById('relojFooter').innerText = ahora.toLocaleTimeString() + " - " + ahora.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+        }
+        setInterval(actualizarReloj, 1000);
+        actualizarReloj();
+    </script>
+</body>
+</html>

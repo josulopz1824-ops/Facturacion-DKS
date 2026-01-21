@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="global-styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reportes Operativos | DKS-Hardware</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { background: #050505; color: white; font-family: sans-serif; margin: 0; padding-bottom: 50px; }
+        .btn-home {
+            position: fixed; top: 20px; left: 20px; background: #121212; color: #d4af37;
+            text-decoration: none; padding: 10px 15px; border-radius: 8px; border: 1px solid #d4af37;
+            display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 0.9rem;
+            transition: 0.3s; z-index: 9999; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .btn-home:hover { background: #d4af37; color: black; transform: scale(1.05); }
+
+        #areaReporte { padding: 20px; background: #050505; }
+        .dashboard-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 10px 0; }
+        .card-reporte { background: #121212; padding: 25px; border-radius: 15px; border: 1px solid #333; text-align: center; }
+        .monto { font-size: 2.5rem; color: #d4af37; margin: 15px 0; font-weight: bold; }
+        .analytics-section { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; margin-top: 20px; }
+        .chart-card { background: #121212; padding: 20px; border-radius: 15px; border: 1px solid #222; display: flex; flex-direction: column; align-items: center; }
+        .lista-recientes { background: #121212; padding: 20px; border-radius: 15px; border: 1px solid #222; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { text-align: left; color: #d4af37; border-bottom: 1px solid #444; padding: 10px; }
+        td { padding: 10px; border-bottom: 1px solid #222; font-size: 0.9rem; }
+        .txt-efectivo { color: #2ecc71 !important; font-weight: bold; }
+        .txt-deuda { color: #e74c3c !important; font-weight: bold; }
+        .txt-pagado { color: #f1c40f !important; font-weight: bold; }
+        .txt-abonado { color: #ff8c00 !important; font-weight: bold; }
+        canvas { max-width: 250px !important; max-height: 250px !important; }
+        .admin-actions { padding: 20px 30px; display: flex; gap: 15px; background: #0a0a0a; }
+        .btn-accion { padding: 12px 25px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-cierre { background: #d4af37; color: black; }
+        .btn-historial { background: #333; color: white; border: 1px solid #444; }
+        .btn-accion:hover { transform: scale(1.05); opacity: 0.9; }
+        .swal2-popup { background: #121212 !important; color: white !important; border: 1px solid #d4af37 !important; }
+    </style>
+</head>
+<body>
+
+    <div class="admin-actions">
+        <button class="btn-accion btn-cierre" id="btnEjecutarCierre">🔒 REALIZAR CIERRE Y DESCARGAR PDF</button>
+        <button class="btn-accion btn-historial" onclick="window.location.href='historial.html'">📅 VER HISTORIAL DE CIERRES</button>
+    </div>
+    
+    <a href="index.html" class="btn-home"><span>DASHBOARD</span></a>
+
+    <div id="areaReporte">
+        <h1 style="margin-left: 10px;">Reporte: <span id="nombreLocalRep">Cargando...</span></h1>
+        <p style="margin-left: 10px; color: #888;" id="fechaReporte"></p>
+
+        <div class="dashboard-container">
+            <div class="card-reporte">
+                <h3>Caja Empresa (Turno)</h3>
+                <div class="monto" id="cajaHoy">L. 0.00</div>
+                <small style="color: #888;">Efectivo total de la empresa</small>
+            </div>
+            <div class="card-reporte">
+                <h3>Cartera Pendiente</h3>
+                <div class="monto" id="creditosHoy" style="color: #ff4444;">L. 0.00</div>
+                <small style="color: #888;">Deudas totales de clientes</small>
+            </div>
+            <div class="card-reporte">
+                <h3>Alertas de Stock</h3>
+                <div class="monto" id="alertasStock" style="color: #ffa900;">0</div>
+                <small style="color: #888;">Productos bajos ( < 5 )</small>
+            </div>
+        </div>
+
+        <div class="analytics-section">
+            <div class="chart-card">
+                <h3>Origen del Dinero</h3>
+                <canvas id="graficoIngresos"></canvas>
+                <div id="leyendaGráfico" style="margin-top: 15px; font-size: 0.8rem; color: #aaa;"></div>
+            </div>
+
+            <div class="lista-recientes">
+                <h3>Movimientos de la Empresa</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Cliente</th>
+                            <th>Tipo/Estado</th>
+                            <th>Monto</th>
+                            <th>Fecha/Hora</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaVentas"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db, verificarPermisos } from './auth-facturacion.js';
+        import { collection, query, where, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        let miGrafico;
+        let empresaActual = "";
+        let ultimoCierre = localStorage.getItem('dks_ultimo_cierre') ? new Date(localStorage.getItem('dks_ultimo_cierre')) : new Date(0);
+
+        document.getElementById('fechaReporte').innerText = "Corte al: " + new Date().toLocaleString();
+
+        // --- 0. SEGURIDAD Y FILTRO POR EMPRESA ---
+        async function inicializarReportes() {
+            const userData = await verificarPermisos();
+            if (userData) {
+                empresaActual = userData.empresa;
+                document.getElementById('nombreLocalRep').innerText = userData.nombreLocal || "Digital Knowledge Solutions";
+                cargarReportesEmpresa(empresaActual);
+            }
+        }
+
+        inicializarReportes();
+
+        async function cargarReportesEmpresa(empID) {
+            let totalVentasDirectas = 0;
+            let totalRecuperadoDeudas = 0;
+            let totalCarteraPendiente = 0; 
+            let htmlVentas = "";
+
+            // 1. VENTAS DE LA EMPRESA
+            const qVentas = query(collection(db, "ventas"), where("empresa", "==", empID));
+            const snapVentas = await getDocs(qVentas);
+            
+            snapVentas.forEach(doc => {
+                const v = doc.data();
+                const fechaV = v.fecha?.toDate() || new Date();
+                if (fechaV > ultimoCierre) {
+                    totalVentasDirectas += v.total;
+                    htmlVentas += `<tr>
+                        <td>${v.cliente}</td>
+                        <td class="txt-efectivo">VENTA EFECTIVO</td>
+                        <td class="txt-efectivo">L. ${v.total.toFixed(2)}</td>
+                        <td>${fechaV.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    </tr>`;
+                }
+            });
+
+            // 2. DEUDAS DE LA EMPRESA
+            const qDeudas = query(collection(db, "deudas"), where("empresa", "==", empID));
+            const snapDeudas = await getDocs(qDeudas);
+            
+            snapDeudas.forEach(doc => {
+                const d = doc.data();
+                const fPago = d.fechaPago?.toDate() || null;
+                const fAbono = d.fechaAbono?.toDate() || null;
+                const fCreacion = d.fecha?.toDate() || new Date();
+
+                if (d.estado !== "pagado") {
+                    const saldoPendiente = d.total - (d.totalAbonado || 0);
+                    totalCarteraPendiente += saldoPendiente;
+                }
+
+                if (d.estado === "pagado" && fPago && fPago > ultimoCierre) {
+                    totalRecuperadoDeudas += d.total;
+                    htmlVentas += `<tr>
+                        <td>${d.cliente}</td>
+                        <td class="txt-pagado">DEUDA PAGADA</td>
+                        <td class="txt-pagado">L. ${d.total.toFixed(2)}</td>
+                        <td>${fPago.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    </tr>`;
+                } 
+                else if (d.estado === "abonado" && fAbono && fAbono > ultimoCierre) {
+                    totalRecuperadoDeudas += (d.ultimoAbono || 0);
+                    htmlVentas += `<tr>
+                        <td>${d.cliente}</td>
+                        <td class="txt-abonado">ABONO RECIBIDO</td>
+                        <td class="txt-abonado">L. ${(d.ultimoAbono || 0).toFixed(2)}</td>
+                        <td>${fAbono.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    </tr>`;
+                }
+
+                if (fCreacion > ultimoCierre && d.estado !== "pagado") {
+                    htmlVentas += `<tr>
+                        <td>${d.cliente}</td>
+                        <td class="txt-deuda">CRÉDITO NUEVO</td>
+                        <td class="txt-deuda">L. ${d.total.toFixed(2)}</td>
+                        <td>${fCreacion.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+                    </tr>`;
+                }
+            });
+
+            // 3. ACTUALIZAR UI
+            const totalCaja = totalVentasDirectas + totalRecuperadoDeudas;
+            document.getElementById('cajaHoy').innerText = `L. ${totalCaja.toFixed(2)}`;
+            document.getElementById('creditosHoy').innerText = `L. ${totalCarteraPendiente.toFixed(2)}`;
+            document.getElementById('tablaVentas').innerHTML = htmlVentas || "<tr><td colspan='4' style='text-align:center;'>Sin movimientos en este turno</td></tr>";
+
+            // 4. STOCK DE LA EMPRESA
+            const qStock = query(collection(db, "productos"), where("empresa", "==", empID), where("stock", "<", 5));
+            const snapStock = await getDocs(qStock);
+            document.getElementById('alertasStock').innerText = snapStock.size;
+
+            actualizarGrafico(totalVentasDirectas, totalRecuperadoDeudas);
+        }
+
+        // --- FUNCION CIERRE CON SELLO DE EMPRESA ---
+        document.getElementById('btnEjecutarCierre').onclick = async () => {
+            if(!empresaActual) return;
+
+            const montoTexto = document.getElementById('cajaHoy').innerText;
+            const totalCaja = parseFloat(montoTexto.replace('L. ', ''));
+
+            const { isConfirmed } = await Swal.fire({
+                title: '¿Realizar Cierre de Caja?',
+                text: `Se guardará el turno de la empresa con L. ${totalCaja.toFixed(2)}`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d4af37'
+            });
+            
+            if (isConfirmed) {
+                try {
+                    const area = document.getElementById('areaReporte');
+                    const opt = {
+                        margin: 0.3,
+                        filename: `Cierre_DKS_${auth.currentUser.email}_${new Date().toLocaleDateString()}.pdf`,
+                        html2canvas: { scale: 2, backgroundColor: '#050505' },
+                        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+                    };
+                    await html2pdf().set(opt).from(area).save();
+
+                    await addDoc(collection(db, "cierres"), {
+                        total: totalCaja,
+                        fecha: serverTimestamp(),
+                        empresa: empresaActual,
+                        vendedor: auth.currentUser.uid,
+                        tipo: "Manual"
+                    });
+
+                    localStorage.setItem('dks_ultimo_cierre', new Date().toISOString());
+                    await Swal.fire('✅ CERRADO', 'Turno finalizado con éxito', 'success');
+                    location.reload();
+                } catch (e) { Swal.fire('Error', e.message, 'error'); }
+            }
+        };
+
+        function actualizarGrafico(ventas, deudas) {
+            const ctx = document.getElementById('graficoIngresos').getContext('2d');
+            if (miGrafico) miGrafico.destroy();
+            miGrafico = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Ventas', 'Recuperado'],
+                    datasets: [{
+                        data: [ventas, deudas],
+                        backgroundColor: ['#2ecc71', '#f1c40f'],
+                        borderColor: '#121212',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    animation: false,
+                    plugins: { legend: { display: false } },
+                    cutout: '70%'
+                }
+            });
+            document.getElementById('leyendaGráfico').innerHTML = `
+                <span style="color:#2ecc71">●</span> Ventas Directas: L. ${ventas.toFixed(2)} <br>
+                <span style="color:#f1c40f">●</span> Recuperación Deudas: L. ${deudas.toFixed(2)}
+            `;
+        }
+    </script>
+</body>
+</html>

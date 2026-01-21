@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="global-styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Caja Pro | DKS-Hardware</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root { --dorado: #d4af37; --bg: #0a0a0a; --card: #151515; --success: #00c851; --danger: #ff4444; }
+        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; display: grid; grid-template-columns: 1fr 400px; height: 100vh; margin: 0; }
+        
+        .btn-home {
+            position: fixed; top: 20px; left: 20px; background: #121212; color: #d4af37;
+            text-decoration: none; padding: 10px 15px; border-radius: 8px; border: 1px solid #d4af37;
+            display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 0.9rem;
+            transition: 0.3s; z-index: 9999; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+
+        .btn-home:hover { background: #d4af37; color: black; transform: scale(1.05); }
+
+        .search-section { padding: 30px; border-right: 1px solid #222; overflow-y: auto; }
+        .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
+        .item-card { background: var(--card); padding: 15px; border-radius: 10px; border: 1px solid #333; cursor: pointer; transition: 0.2s; }
+        .item-card:hover { border-color: var(--dorado); transform: translateY(-3px); }
+        
+        .fast-actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid #222; padding-bottom: 20px; }
+        .btn-fast { background: #1a1a1a; border: 1px solid var(--dorado); color: white; padding: 10px 15px; border-radius: 8px; cursor: pointer; transition: 0.3s; font-size: 0.9rem; }
+        .btn-fast:hover { background: var(--dorado); color: black; }
+
+        .cart-section { background: #000; padding: 30px; display: flex; flex-direction: column; }
+        .cart-items { flex-grow: 1; overflow-y: auto; }
+        .cart-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #222; font-size: 0.9rem; }
+        .tax-row { font-size: 0.85rem; color: #888; display: flex; justify-content: space-between; margin-top: 5px; }
+        
+        .tax-config-panel { margin: 15px 0; padding: 12px; background: #111; border: 1px solid #222; border-radius: 10px; }
+        .tax-controls { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+        .tax-input { width: 70px !important; padding: 5px !important; text-align: center; font-size: 0.9rem !important; }
+
+        .total-box { border-top: 2px solid var(--dorado); padding-top: 10px; margin-top: 10px; }
+        .btn-pay { background: var(--success); color: white; border: none; width: 100%; padding: 18px; border-radius: 10px; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 10px; transition: 0.3s; }
+        .btn-pay:hover { opacity: 0.8; transform: scale(1.02); }
+        
+        input { width: 100%; background: #1a1a1a; border: 1px solid #333; color: white; padding: 15px; border-radius: 8px; font-size: 1.1rem; box-sizing: border-box; }
+        .qty-tag { background: var(--dorado); color: black; padding: 2px 6px; border-radius: 4px; font-weight: bold; margin-right: 8px; font-size: 0.8rem; }
+
+        .swal2-popup { background: #151515 !important; color: white !important; border: 1px solid var(--dorado) !important; }
+        .swal2-title { color: var(--dorado) !important; }
+    </style>
+</head>
+<body>
+    <a href="index.html" class="btn-home"><span>DASHBOARD</span></a>
+
+    <section class="search-section">
+        <h1><span id="nombreNegocio">Caja Pro</span> <span style="color:var(--dorado)">DKS</span></h1>
+        <div class="fast-actions" id="fastActionsContainer"></div>
+        <input type="text" id="searchBar" placeholder="🔍 Buscar mi producto..." oninput="filtrarProductos()">
+        <div class="product-grid" id="gridProductos"></div>
+    </section>
+
+    <section class="cart-section">
+        <h2 id="tituloTicket">Ticket de Venta</h2>
+        <div class="cart-items" id="ticket"></div>
+
+        <div class="tax-config-panel">
+            <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                <span>Configurar Impuesto</span>
+                <input type="checkbox" id="checkISV" checked onchange="actualizarTicket()" style="width: 20px; height: 20px; cursor: pointer;">
+            </div>
+            <div class="tax-controls" id="taxControls">
+                <span>Porcentaje (%):</span>
+                <input type="number" id="taxPercent" value="15" min="0" max="100" class="tax-input" oninput="actualizarTicket()">
+            </div>
+        </div>
+        
+        <div class="total-box">
+            <div id="desgloseImpuestos"></div>
+            <div style="display:flex; justify-content: space-between; font-size: 1.5rem; font-weight: bold; margin-top:10px;">
+                <span>TOTAL:</span>
+                <span style="color:var(--dorado)">L. <span id="totalVenta">0.00</span></span>
+            </div>
+            
+            <button class="btn-pay" id="btnFinalizar">FINALIZAR (EFECTIVO)</button>
+            <button class="btn-pay solo-admin" id="btnCredito" style="background: var(--dorado); color: black;">REGISTRAR FIADO (CRÉDITO)</button>
+            <button class="btn-pay solo-admin" id="btnFactura" style="background: #333; color: white; margin-top: 5px;">🖨️ REIMPRIMIR ÚLTIMO RECIBO</button>
+        </div>
+    </section>
+
+    <script type="module">
+        import { auth, db, verificarPermisos } from './auth-facturacion.js';
+        import { collection, onSnapshot, addDoc, doc, updateDoc, increment, serverTimestamp, query, where, getDoc } 
+        from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        let productosLocal = [];
+        let carrito = [];
+        let ultimaVenta = null;
+        let empresaActual = "";
+        let nombreLocalGlobal = "Digital Knowledge Solutions";
+
+        const configRapida = {
+            pulperia: [{ n: "Coca-Cola 0.5L", p: 20, i: "🥤" }, { n: "Pan Blanco", p: 35, i: "🍞" }, { n: "Hielo", p: 15, i: "🧊" }],
+            tienda_ropa: [{ n: "Camiseta Básica", p: 180, i: "👕" }, { n: "Calcetines", p: 45, i: "🧦" }],
+            papeleria: [{ n: "Copia B/N", p: 2, i: "📄" }, { n: "Folder", p: 5, i: "📁" }]
+        };
+
+        async function iniciarCaja() {
+            const userData = await verificarPermisos();
+            if (userData) {
+                empresaActual = userData.empresa;
+                nombreLocalGlobal = userData.nombreLocal || "Mi Negocio";
+                
+                document.getElementById('nombreNegocio').innerText = nombreLocalGlobal;
+                document.title = `${nombreLocalGlobal} | Caja DKS`;
+
+                if (userData.rol === 'vendedor') {
+                    document.querySelectorAll('.solo-admin').forEach(el => el.style.display = 'none');
+                    document.getElementById('tituloTicket').innerText = "Ticket (Vendedor)";
+                }
+
+                cargarBotonesRapidos(userData.categorias || []);
+                escucharProductosEmpresa(empresaActual);
+            }
+        }
+
+        iniciarCaja();
+
+        function cargarBotonesRapidos(categorias) {
+            const container = document.getElementById('fastActionsContainer');
+            container.innerHTML = "";
+            categorias.forEach(cat => {
+                if (configRapida[cat]) {
+                    configRapida[cat].forEach(item => {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn-fast';
+                        btn.innerHTML = `${item.i} ${item.n}`;
+                        btn.onclick = () => window.agregarRapidoManual(item.n, item.p);
+                        container.appendChild(btn);
+                    });
+                }
+            });
+        }
+
+        function escucharProductosEmpresa(empID) {
+            const q = query(collection(db, "productos"), where("empresa", "==", empID));
+            onSnapshot(q, (snap) => {
+                productosLocal = [];
+                const grid = document.getElementById('gridProductos');
+                grid.innerHTML = "";
+                snap.forEach(d => {
+                    const p = { id: d.id, ...d.data() };
+                    productosLocal.push(p);
+                    if(p.stock > 0) {
+                        grid.innerHTML += `
+                        <div class="item-card" onclick="pedirCantidad('${p.id}')">
+                            <div style="color:var(--dorado); font-weight:bold;">${p.nombre}</div>
+                            <small>${p.categoria}</small>
+                            <div style="margin-top:10px;">L. ${p.precio.toFixed(2)}</div>
+                            <small style="color:#888;">Stock: ${p.stock}</small>
+                        </div>`;
+                    }
+                });
+            });
+        }
+
+        window.agregarRapidoManual = (nombre, precio) => {
+            const itemIndex = carrito.findIndex(item => item.nombre === nombre);
+            if (itemIndex !== -1) {
+                carrito[itemIndex].cantidad += 1;
+            } else {
+                carrito.push({ id: 'fast-' + Date.now(), nombre, precio: parseFloat(precio), cantidad: 1 });
+            }
+            window.actualizarTicket();
+        };
+
+        window.pedirCantidad = async (id) => {
+            const prod = productosLocal.find(p => p.id === id);
+            const { value: cant } = await Swal.fire({
+                title: `Cantidad: ${prod.nombre}`,
+                input: 'number', inputValue: 1, showCancelButton: true,
+                inputAttributes: { min: 1, max: prod.stock, step: 1 }
+            });
+            if (cant && cant > 0) {
+                const unidades = parseInt(cant);
+                const itemIndex = carrito.findIndex(item => item.id === id);
+                if (itemIndex !== -1) carrito[itemIndex].cantidad += unidades;
+                else carrito.push({ ...prod, cantidad: unidades });
+                window.actualizarTicket();
+            }
+        };
+
+        window.actualizarTicket = () => {
+            const container = document.getElementById('ticket');
+            const desglose = document.getElementById('desgloseImpuestos');
+            const aplicarISV = document.getElementById('checkISV').checked;
+            const porcentaje = parseFloat(document.getElementById('taxPercent').value) || 0;
+            
+            document.getElementById('taxControls').style.opacity = aplicarISV ? "1" : "0.3";
+            document.getElementById('taxPercent').disabled = !aplicarISV;
+
+            container.innerHTML = "";
+            let subtotal = 0;
+            carrito.forEach((item, index) => {
+                subtotal += (item.precio * item.cantidad);
+                container.innerHTML += `
+                <div class="cart-row">
+                    <span><span class="qty-tag">${item.cantidad}x</span> ${item.nombre}</span>
+                    <span>L. ${(item.precio * item.cantidad).toFixed(2)} 
+                    <button onclick="window.quitar(${index})" style="color:var(--danger); background:none; border:none; cursor:pointer; margin-left:10px;">✕</button></span>
+                </div>`;
+            });
+
+            const valorISV = aplicarISV ? (subtotal * (porcentaje / 100)) : 0;
+            const totalFinal = subtotal + valorISV;
+
+            document.getElementById('totalVenta').innerText = totalFinal.toFixed(2);
+            desglose.innerHTML = `
+                <div class="tax-row"><span>Subtotal:</span><span>L. ${subtotal.toFixed(2)}</span></div>
+                <div class="tax-row"><span>Impuesto (${aplicarISV ? porcentaje : 0}%):</span><span>L. ${valorISV.toFixed(2)}</span></div>
+            `;
+        }
+
+        window.quitar = (index) => { carrito.splice(index, 1); window.actualizarTicket(); };
+
+        async function procesarTransaccion(tipo) {
+            const user = auth.currentUser;
+            if(!user || carrito.length === 0) return Swal.fire('Error', 'Caja vacía', 'warning');
+
+            const { value: nombreInput } = await Swal.fire({
+                title: 'Nombre del Cliente', input: 'text', inputPlaceholder: 'Ej. Juan Pérez', showCancelButton: true
+            });
+
+            if (nombreInput === undefined) return;
+            let cliente = nombreInput.trim() === "" ? "Consumidor Final" : nombreInput;
+
+            const totalFinal = parseFloat(document.getElementById('totalVenta').innerText);
+            try {
+                const ventaData = {
+                    cliente, 
+                    productos: [...carrito], 
+                    total: totalFinal,
+                    empresa: empresaActual,
+                    vendedor: user.uid, 
+                    metodo: tipo === "credito" ? "Crédito" : "Efectivo",
+                    estado: tipo === "credito" ? "pendiente" : "pagado",
+                    isvAplicado: document.getElementById('checkISV').checked ? document.getElementById('taxPercent').value : 0,
+                    fecha: serverTimestamp()
+                };
+
+                await addDoc(collection(db, tipo === "credito" ? "deudas" : "ventas"), ventaData);
+
+                for(const item of carrito) {
+                    if(!item.id.toString().startsWith('fast-')) {
+                        await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
+                    }
+                }
+
+                ultimaVenta = { ...ventaData, fecha: new Date() };
+                await Swal.fire('✅ ÉXITO', 'Venta registrada correctamente', 'success');
+                await window.generarFacturaPDF(); // Llamada asíncrona
+                carrito = [];
+                window.actualizarTicket();
+            } catch (e) { Swal.fire('Error', e.message, 'error'); }
+        }
+
+        // --- FUNCIÓN ACTUALIZADA PARA LEER CONFIGURACIÓN ---
+        window.generarFacturaPDF = async () => {
+            if(!ultimaVenta) return;
+
+            // Datos por defecto por si no hay configuración
+            let config = {
+                nombre: nombreLocalGlobal,
+                rtn: "---",
+                telefono: "---",
+                direccion: "Sin dirección",
+                mensaje: "¡Gracias por su compra!"
+            };
+
+            // Intentar obtener datos reales de la empresa
+            try {
+                const confRef = doc(db, "configuracion", empresaActual);
+                const confSnap = await getDoc(confRef);
+                if (confSnap.exists()) {
+                    config = { ...config, ...confSnap.data() };
+                }
+            } catch (error) {
+                console.error("Error cargando config de ticket:", error);
+            }
+
+            const element = document.createElement('div');
+            element.style.width = "260px"; element.style.padding = "15px"; element.style.background = "white";
+            element.style.color = "black"; element.style.fontFamily = "monospace"; element.style.fontSize = "12px";
+            
+            const pct = parseFloat(ultimaVenta.isvAplicado) / 100;
+            const sub = ultimaVenta.total / (1 + pct);
+            const isv = ultimaVenta.total - sub;
+            const itemsHtml = ultimaVenta.productos.map(i => `
+                <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                    <span>${i.cantidad}x ${i.nombre.substring(0,18)}</span>
+                    <span>L.${(i.precio*i.cantidad).toFixed(2)}</span>
+                </div>`).join('');
+
+            element.innerHTML = `
+                <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px;">
+                    <h2 style="margin:0; font-size:16px;">${config.nombre.toUpperCase()}</h2>
+                    <p style="margin:2px 0;">RTN: ${config.rtn}</p>
+                    <p style="margin:2px 0;">TEL: ${config.telefono}</p>
+                    <p style="margin:2px 0; font-size:10px;">${config.direccion}</p>
+                </div>
+                <div style="font-size:11px; margin-bottom:10px;">
+                    <p style="margin:2px 0;"><b>Cliente:</b> ${ultimaVenta.cliente}</p>
+                    <p style="margin:2px 0;"><b>Fecha:</b> ${ultimaVenta.fecha.toLocaleString()}</p>
+                    <p style="margin:2px 0;"><b>Tipo:</b> ${ultimaVenta.metodo.toUpperCase()}</p>
+                </div>
+                <div style="border-bottom:1px dashed #000; padding-bottom:5px; margin-bottom:5px;">
+                    ${itemsHtml}
+                </div>
+                <div style="text-align:right;">
+                    <p style="margin:2px 0;">Subtotal: L. ${sub.toFixed(2)}</p>
+                    <p style="margin:2px 0;">ISV (${ultimaVenta.isvAplicado}%): L. ${isv.toFixed(2)}</p>
+                    <h3 style="margin:5px 0 0 0;">TOTAL: L. ${ultimaVenta.total.toFixed(2)}</h3>
+                </div>
+                <div style="text-align:center; margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
+                    <p style="margin:0; font-style:italic;">${config.mensaje}</p>
+                    <p style="font-size:9px; color:#666; margin-top:5px;">Digital Knowledge Solutions</p>
+                </div>`;
+
+            html2pdf().from(element).set({
+                margin: 0, 
+                filename: `Ticket_${ultimaVenta.cliente}.pdf`,
+                html2canvas: { scale: 2 },
+                jsPDF: { unit: 'mm', format: [80, 150], orientation: 'portrait' }
+            }).save();
+        };
+
+        document.getElementById('btnFinalizar').onclick = () => procesarTransaccion("efectivo");
+        document.getElementById('btnCredito').onclick = () => procesarTransaccion("credito");
+        document.getElementById('btnFactura').onclick = () => window.generarFacturaPDF();
+
+        window.filtrarProductos = () => {
+            const val = document.getElementById('searchBar').value.toLowerCase();
+            document.querySelectorAll('.item-card').forEach(c => {
+                c.style.display = c.innerText.toLowerCase().includes(val) ? "block" : "none";
+            });
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="global-styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historial de Cierres | DKS</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root { --dorado: #d4af37; --neon: #ffdf00; }
+        body { background: #050505; color: white; font-family: sans-serif; padding: 30px; margin: 0; }
+        
+        .btn-home {
+            position: fixed; top: 20px; left: 20px; background: #121212; color: #d4af37;
+            text-decoration: none; padding: 10px 15px; border-radius: 8px; border: 1px solid #d4af37;
+            display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 0.9rem;
+            transition: 0.3s; z-index: 9999; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        .btn-home:hover { background: #d4af37; color: black; transform: scale(1.05); }
+
+        @media (max-width: 600px) {
+            .btn-home span { display: none; }
+            .btn-home { padding: 12px; border-radius: 50%; }
+        }
+        
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; margin-top: 40px; }
+        
+        .btn-volver { 
+            background: #111; color: white; border: 1px solid #333; padding: 10px 20px; 
+            border-radius: 8px; cursor: pointer; text-decoration: none; font-weight: bold;
+        }
+        .btn-volver:hover { background: #222; border-color: var(--dorado); }
+
+        .grid-historial { display: grid; grid-template-columns: 2fr 1fr; gap: 30px; }
+        .card { 
+            background: #121212; padding: 25px; border-radius: 15px; 
+            border: 1px solid #222; box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
+        }
+
+        h3 { color: var(--dorado); margin-top: 0; text-transform: uppercase; letter-spacing: 1px; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 15px; border-bottom: 1px solid #222; text-align: left; }
+        th { color: var(--dorado); font-size: 0.8rem; }
+        td { font-family: 'Courier New', Courier, monospace; color: #ccc; }
+
+        .chart-container { position: relative; height: 400px; width: 100%; }
+        
+        @media (max-width: 900px) {
+            .grid-historial { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header-flex">
+        <h1>Historial de Cierres: <span id="nombreEmpresaLabel" style="color:var(--dorado)">...</span></h1>
+        <a href="reportes.html" class="btn-volver">← VOLVER A REPORTES</a>
+    </div>
+    
+    <a href="index.html" class="btn-home">
+        <i class="fas fa-home"></i> <span>DASHBOARD</span>
+    </a>
+    
+    <div class="grid-historial">
+        <div class="card">
+            <h3>📈 Rendimiento Semanal de la Empresa</h3>
+            <div class="chart-container">
+                <canvas id="graficaBarras"></canvas>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>📜 Últimos 20 Cierres</h3>
+            <table>
+                <thead>
+                    <tr><th>FECHA</th><th>MONTO TOTAL</th></tr>
+                </thead>
+                <tbody id="listaCierres"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script type="module">
+        import { auth, db, verificarPermisos } from './auth-facturacion.js';
+        import { collection, getDocs, orderBy, query, where, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // --- INICIALIZACIÓN CON FILTRO DE EMPRESA ---
+        async function iniciarHistorial() {
+            const userData = await verificarPermisos();
+            if (userData) {
+                document.getElementById('nombreEmpresaLabel').innerText = userData.nombreLocal || "Mi Empresa";
+                cargarHistorialEmpresa(userData.empresa);
+            }
+        }
+
+        iniciarHistorial();
+
+        async function cargarHistorialEmpresa(empID) {
+            // Consulta filtrada por EMPRESA
+            const q = query(
+                collection(db, "cierres"), 
+                where("empresa", "==", empID),
+                orderBy("fecha", "desc"), 
+                limit(20)
+            );
+            
+            const snap = await getDocs(q);
+            const datosGrafica = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }; 
+            let html = "";
+
+            snap.forEach(doc => {
+                const c = doc.data();
+                const fechaDate = c.fecha ? c.fecha.toDate() : null;
+                const fechaLegible = fechaDate ? fechaDate.toLocaleDateString() : "---";
+                
+                html += `<tr>
+                    <td>${fechaLegible}</td>
+                    <td style="color:var(--dorado); font-weight:bold;">L. ${c.total.toFixed(2)}</td>
+                </tr>`;
+                
+                if(fechaDate) {
+                    const diaSemana = fechaDate.getDay(); 
+                    datosGrafica[diaSemana] += c.total;
+                }
+            });
+
+            document.getElementById('listaCierres').innerHTML = html || "<tr><td colspan='2'>No hay cierres registrados para esta empresa.</td></tr>";
+            renderGrafica(datosGrafica);
+        }
+
+        function renderGrafica(datos) {
+            const ctx = document.getElementById('graficaBarras').getContext('2d');
+            
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, 'rgba(212, 175, 55, 1)'); 
+            gradient.addColorStop(1, 'rgba(212, 175, 55, 0.1)');
+
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'],
+                    datasets: [{
+                        label: 'Ventas de la Empresa (L.)',
+                        data: [
+                            datos[1], datos[2], datos[3], 
+                            datos[4], datos[5], datos[6], datos[0]
+                        ],
+                        backgroundColor: gradient,
+                        borderColor: '#d4af37',
+                        borderWidth: 2,
+                        borderRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#222' },
+                            ticks: { color: '#888' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#fff', font: { weight: 'bold' } }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>

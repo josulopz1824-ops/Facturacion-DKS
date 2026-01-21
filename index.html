@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#050505">
+    <title>Login | DKS-Hardware</title>
+    <link rel="stylesheet" href="global-styles.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root { --dorado: #d4af37; --bg: #050505; --card: #121212; }
+        body { 
+            background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif;
+            display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0;
+        }
+        .login-card {
+            background: var(--card); padding: 40px; border-radius: 20px;
+            border: 1px solid #222; text-align: center; width: 350px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        input {
+            width: 100%; background: #000; border: 1px solid #333; color: white;
+            padding: 15px; border-radius: 8px; margin-bottom: 20px; box-sizing: border-box;
+            outline: none; transition: 0.3s;
+        }
+        input:focus { border-color: var(--dorado); }
+        
+        .btn-login {
+            background: var(--dorado); color: black; border: none; width: 100%;
+            padding: 15px; border-radius: 8px; font-weight: bold; cursor: pointer;
+            transition: 0.3s; margin-bottom: 10px;
+        }
+        .btn-login:hover { transform: scale(1.02); opacity: 0.9; }
+
+        .btn-register {
+            background: transparent; color: var(--dorado); border: 1px solid var(--dorado);
+            width: 100%; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;
+            transition: 0.3s; font-size: 0.8rem;
+        }
+        .btn-register:hover { background: rgba(212, 175, 55, 0.1); }
+
+        #error { color: #ff4444; font-size: 0.8rem; margin-top: 15px; min-height: 1.2em; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h1 style="margin-bottom: 5px; letter-spacing: 3px;">DKS<span style="color:var(--dorado)">-HARDWARE</span></h1>
+        <p style="color: #666; font-size: 0.8rem; margin-bottom: 30px; letter-spacing: 2px;">CLOUD MANAGEMENT SYSTEM</p>
+        
+        <input type="email" id="user" placeholder="Correo electrónico">
+        <input type="password" id="pass" placeholder="Contraseña">
+        
+        <button class="btn-login" id="btnLogin">ENTRAR AL SISTEMA</button>
+        <button class="btn-register" id="btnRegister">CREAR CUENTA NUEVA</button>
+        
+        <p id="error"></p>
+    </div>
+
+    <script type="module">
+        // Importamos auth y db desde tu archivo central de configuración
+        import { auth, db } from './auth-facturacion.js';
+        import { 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword 
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { 
+            doc, 
+            setDoc, 
+            getDoc, 
+            collection, 
+            query, 
+            where, 
+            getDocs 
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const errorMsg = document.getElementById('error');
+
+        // FUNCIÓN: INICIAR SESIÓN
+        document.getElementById('btnLogin').onclick = async () => {
+            const email = document.getElementById('user').value;
+            const pass = document.getElementById('pass').value;
+            const btn = document.getElementById('btnLogin');
+
+            if(!email || !pass) {
+                mostrarError("Completa todos los campos");
+                return;
+            }
+
+            btn.innerText = "VERIFICANDO...";
+            btn.disabled = true;
+
+            try {
+                await signInWithEmailAndPassword(auth, email, pass);
+                window.location.href = "dashboard.html";
+            } catch (error) {
+                btn.innerText = "ENTRAR AL SISTEMA";
+                btn.disabled = false;
+                manejarErrores(error.code);
+            }
+        };
+
+        // FUNCIÓN: REGISTRARSE (SISTEMA MULTI-EMPRESA)
+        document.getElementById('btnRegister').onclick = async () => {
+            const email = document.getElementById('user').value;
+            const pass = document.getElementById('pass').value;
+
+            if(!email || !pass) {
+                mostrarError("Ingresa correo y clave para registrarte");
+                return;
+            }
+
+            if(pass.length < 6) {
+                mostrarError("La clave debe tener al menos 6 caracteres");
+                return;
+            }
+
+            // 1. Pedir el nombre del negocio antes de crear el usuario
+            const { value: nombreNegocio } = await Swal.fire({
+                title: 'Nombre de tu Negocio',
+                input: 'text',
+                inputLabel: '¿Para qué empresa o tienda trabajas?',
+                inputPlaceholder: 'Ej: Ferretería El Amigo',
+                showCancelButton: true,
+                confirmButtonColor: '#d4af37',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (!nombreNegocio) return;
+
+            try {
+                // 2. Buscar si el negocio ya existe
+                const negociosRef = collection(db, "negocios");
+                const q = query(negociosRef, where("nombre", "==", nombreNegocio.trim().toUpperCase()));
+                const querySnapshot = await getDocs(q);
+
+                let rolFinal = "admin";
+                let empresaID = nombreNegocio.trim().toUpperCase().replace(/\s+/g, '_');
+
+                if (!querySnapshot.empty) {
+                    // EL NEGOCIO EXISTE: Validar clave de acceso de empleado
+                    const docNegocio = querySnapshot.docs[0];
+                    const datosNegocio = docNegocio.data();
+                    empresaID = docNegocio.id;
+
+                    const { value: claveAcceso } = await Swal.fire({
+                        title: 'Negocio Detectado',
+                        text: `El negocio "${nombreNegocio}" ya existe. Ingresa la clave de acceso proporcionada por tu jefe:`,
+                        input: 'password',
+                        inputPlaceholder: 'Clave de acceso',
+                        showCancelButton: true
+                    });
+
+                    if (claveAcceso === datosNegocio.clave) {
+                        rolFinal = "cajero";
+                    } else {
+                        Swal.fire('Error', 'Clave de acceso incorrecta para este negocio.', 'error');
+                        return;
+                    }
+                } else {
+                    // NEGOCIO NUEVO: Registrarlo en la DB
+                    await setDoc(doc(db, "negocios", empresaID), {
+                        nombre: nombreNegocio.trim().toUpperCase(),
+                        dueno_email: email,
+                        clave: "1234" // Clave por defecto para sus futuros empleados
+                    });
+                }
+
+                // 3. Crear el usuario en Auth
+                const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+                const user = userCredential.user;
+
+                // 4. Crear el perfil de usuario vinculado a la empresa
+                await setDoc(doc(db, "users", user.uid), {
+                    email: email,
+                    rol: rolFinal,
+                    empresa: empresaID,
+                    fecha_registro: new Date()
+                });
+
+                await Swal.fire({
+                    title: '¡Éxito!',
+                    text: `Te has unido a ${nombreNegocio} como ${rolFinal.toUpperCase()}`,
+                    icon: 'success',
+                    confirmButtonColor: '#d4af37'
+                });
+
+                window.location.href = "index.html";
+
+            } catch (error) {
+                manejarErrores(error.code);
+            }
+        };
+
+        function mostrarError(txt) {
+            errorMsg.innerText = txt;
+            setTimeout(() => { errorMsg.innerText = ""; }, 3000);
+        }
+
+        function manejarErrores(codigo) {
+            console.log("Error Firebase:", codigo);
+            switch (codigo) {
+                case 'auth/user-not-found':
+                case 'auth/wrong-password':
+                case 'auth/invalid-credential':
+                    mostrarError("Credenciales incorrectas");
+                    break;
+                case 'auth/email-already-in-use':
+                    mostrarError("El correo ya está registrado");
+                    break;
+                case 'auth/invalid-email':
+                    mostrarError("Formato de correo inválido");
+                    break;
+                case 'auth/weak-password':
+                    mostrarError("Contraseña muy débil");
+                    break;
+                default:
+                    mostrarError("Error de conexión al servidor");
+            }
+        }
+    </script>
+</body>
+</html>

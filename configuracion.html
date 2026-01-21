@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración | DKS-Hardware</title>
+    <link rel="stylesheet" href="global-styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root { --dorado: #d4af37; --bg: #0a0a0a; --card: #151515; }
+        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; padding: 40px; }
+        .config-container { max-width: 600px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 15px; border: 1px solid #222; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; color: var(--dorado); margin-bottom: 8px; font-size: 0.9rem; }
+        input, textarea { width: 100%; padding: 12px; background: #000; border: 1px solid #333; color: white; border-radius: 8px; box-sizing: border-box; }
+        .btn-save { background: var(--dorado); color: black; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="config-container">
+        <a href="index.html" style="color: #666; text-decoration: none; font-size: 0.8rem;">← Volver al Dashboard</a>
+        <h1 style="margin-top: 10px;">Configuración del <span style="color: var(--dorado);">Negocio</span></h1>
+        <p style="color: #888; font-size: 0.85rem; margin-bottom: 30px;">Estos datos aparecerán impresos en sus comprobantes de venta.</p>
+
+        <form id="configForm">
+            <div class="form-group">
+                <label>Nombre Comercial</label>
+                <input type="text" id="confNombre" placeholder="Ej: Ferretería El Amigo">
+            </div>
+            <div class="form-group">
+                <label>RTN / Identificación Fiscal</label>
+                <input type="text" id="confRTN" placeholder="0000-0000-000000">
+            </div>
+            <div class="form-group">
+                <label>Teléfono de Contacto</label>
+                <input type="text" id="confTel" placeholder="+504 0000-0000">
+            </div>
+            <div class="form-group">
+                <label>Dirección Física</label>
+                <textarea id="confDir" rows="2" placeholder="Barrio El Centro..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Mensaje al pie del Ticket</label>
+                <input type="text" id="confMsg" placeholder="¡Gracias por su compra!">
+            </div>
+            <button type="submit" class="btn-save">GUARDAR CAMBIOS</button>
+        </form>
+    </div>
+
+    <script type="module">
+        import { db, verificarPermisos } from './auth-facturacion.js';
+        import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        let empresaID = "";
+
+        async function cargarDatos() {
+            const user = await verificarPermisos();
+            if(user) {
+                empresaID = user.empresa;
+                const docRef = doc(db, "configuracion", empresaID);
+                const snap = await getDoc(docRef);
+                
+                if(snap.exists()) {
+                    const d = snap.data();
+                    document.getElementById('confNombre').value = d.nombre || "";
+                    document.getElementById('confRTN').value = d.rtn || "";
+                    document.getElementById('confTel').value = d.telefono || "";
+                    document.getElementById('confDir').value = d.direccion || "";
+                    document.getElementById('confMsg').value = d.mensaje || "";
+                }
+            }
+        }
+
+        document.getElementById('configForm').onsubmit = async (e) => {
+            e.preventDefault();
+            try {
+                await setDoc(doc(db, "configuracion", empresaID), {
+                    nombre: document.getElementById('confNombre').value,
+                    rtn: document.getElementById('confRTN').value,
+                    telefono: document.getElementById('confTel').value,
+                    direccion: document.getElementById('confDir').value,
+                    mensaje: document.getElementById('confMsg').value
+                }, { merge: true });
+                
+                Swal.fire('Éxito', 'Configuración actualizada correctamente', 'success');
+            } catch (err) {
+                Swal.fire('Error', 'No se pudo guardar: ' + err.message, 'error');
+            }
+        };
+
+        cargarDatos();
+    </script>
+</body>
+</html>

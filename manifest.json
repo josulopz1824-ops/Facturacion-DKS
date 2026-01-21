@@ -1,0 +1,20 @@
+{
+  "name": "DKS Hardware Cloud",
+  "short_name": "DKS-Billing",
+  "start_url": "inventario-ferretero.html",
+  "display": "standalone",
+  "background_color": "#050505",
+  "theme_color": "#d4af37",
+  "icons": [
+    {
+      "src": "logo-dks.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "logo-dks-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
