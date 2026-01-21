@@ -18,33 +18,35 @@ export const auth = getAuth(app);
 
 /**
  * VERIFICAR PERMISOS DINÁMICOS
- * Esta función ya no depende de un UID fijo, ahora consulta Firestore.
+ * Esta función asegura que el usuario esté logueado ANTES de devolver sus datos.
  */
 export async function verificarPermisos() {
     return new Promise((resolve) => {
-        onAuthStateChanged(auth, async (user) => {
+        // Usamos un "unsubscribe" para que la función se detenga apenas obtenga la respuesta
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            unsubscribe(); // Detenemos el observador para evitar fugas de memoria
+            
             if (user) {
                 try {
-                    // Buscamos el documento del usuario en la colección 'users'
+                    console.log("🔥 Autenticación detectada, verificando perfil en Firestore...");
                     const userRef = doc(db, "users", user.uid);
                     const userSnap = await getDoc(userRef);
 
                     if (userSnap.exists()) {
                         const userData = userSnap.data();
-                        console.log(`Usuario identificado: ${userData.rol} de ${userData.empresa} 🏢`);
-                        
-                        // Devolvemos toda la data del usuario para que el sistema sepa qué empresa filtrar
+                        console.log(`✅ Usuario identificado: ${userData.rol} de ${userData.empresa}`);
                         resolve(userData); 
                     } else {
-                        console.warn("Usuario logueado pero sin perfil en Firestore.");
+                        console.warn("⚠️ Usuario sin perfil en Firestore.");
                         resolve(null);
                     }
                 } catch (error) {
-                    console.error("Error al obtener permisos:", error);
+                    console.error("❌ Error al obtener datos de Firestore:", error);
                     resolve(null);
                 }
             } else {
-                // Si no hay nadie logueado y no estamos ya en el login, redirigir
+                console.log("🚫 No hay usuario logueado.");
+                // Si no estamos en el login, redirigimos
                 if (!window.location.pathname.includes("login.html")) {
                     window.location.href = "login.html";
                 }
