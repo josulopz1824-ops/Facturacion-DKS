@@ -14,37 +14,50 @@
         }
 
         .btn-home {
-            position: fixed; top: 20px; left: 20px;
-            background: #121212; color: var(--dorado);
-            text-decoration: none; padding: 10px 15px;
-            border-radius: 8px; border: 1px solid var(--dorado);
-            display: flex; align-items: center; gap: 10px;
-            font-weight: bold; font-size: 0.9rem;
-            transition: 0.3s; z-index: 9999;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-        }
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: #121212;
+        color: #d4af37; /* Tu color dorado */
+        text-decoration: none;
+        padding: 10px 15px;
+        border-radius: 8px;
+        border: 1px solid #d4af37;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: bold;
+        font-size: 0.9rem;
+        transition: 0.3s;
+        z-index: 9999; /* Para que siempre esté por encima de todo */
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
 
-        .btn-home:hover { background: var(--dorado); color: black; transform: scale(1.05); }
+    .btn-home:hover {
+        background: #d4af37;
+        color: black;
+        transform: scale(1.05);
+        box-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
+    }
 
-        @media (max-width: 600px) {
-            .btn-home span { display: none; }
-            .btn-home { padding: 12px; border-radius: 50%; }
-        }
-
+    /* Ocultar el texto en celulares para que no estorbe */
+    @media (max-width: 600px) {
+        .btn-home span { display: none; }
+        .btn-home { padding: 12px; border-radius: 50%; }
+    }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
-        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 20px; }
-        .btn { padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; border: none; transition: 0.3s; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        .controles { display: flex; gap: 10px; margin: 20px 0; }
+        .btn { padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; border: none; }
         .btn-pdf { background: var(--dorado); color: black; }
-        
-        .venta-card { background: var(--card); border-radius: 8px; padding: 15px; border: 1px solid #222; margin-bottom: 15px; border-left: 6px solid var(--success); }
+        .venta-card { background: var(--card); border-radius: 8px; padding: 15px; border-left: 6px solid var(--success); border: 1px solid #222; margin-bottom: 15px; }
         .card-pendiente { border-left-color: var(--danger) !important; }
         .card-abonado { border-left-color: var(--warning) !important; }
         .card-pagado-amarillo { border-left-color: var(--pago) !important; }
-        
         .cliente-nombre { color: var(--dorado); font-size: 1.1rem; font-weight: bold; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #000; }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9rem; color: #ccc; }
-        .resumen-final { background: #111; padding: 25px; border-radius: 12px; border: 1px solid var(--dorado); margin-top: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9rem; }
+        .resumen-final { background: #111; padding: 25px; border-radius: 12px; border: 1px solid var(--dorado); }
         .r-item { display: flex; justify-content: space-between; margin-bottom: 10px; }
     </style>
 </head>
@@ -52,24 +65,21 @@
 
     <header>
         <h2 id="reloj-digital" style="color: var(--dorado); font-family: monospace;">00:00:00</h2>
-        <h2 style="font-size: 1.2rem;">DIGITAL KNOWLEDGE SOLUTIONS</h2>
-        <button class="btn btn-pdf" id="btnDescargar"><i class="fas fa-file-pdf"></i> DESCARGAR REPORTE</button>
-        <a href="dashboard.html" class="btn-home">
-            <i class="fas fa-home"></i> <span>DASHBOARD</span>
-        </a>
-    </header>
-
-    <div id="area-impresion" style="padding: 10px; background: #0a0a0a;">
-        <h3 style="text-align: center; color: var(--dorado); margin: 0;">REPORTE DIARIO - DKS</h3>
-        <p id="fecha-reporte" style="text-align: center; color: #888; margin-bottom: 20px;"></p>
+        <h2>DIGITAL KNOWLEDGE SOLUTIONS</h2>
+        <button class="btn btn-pdf" onclick="descargarPDF()"><i class="fas fa-file-pdf"></i> PDF MANUAL</button>
         
-        <div id="contenedorVentas"></div>
+    </header>
+    
 
+    <div id="area-impresion">
+        <h3 style="text-align: center; color: var(--dorado);">REPORTE DIARIO - DKS</h3>
+        <p id="fecha-reporte" style="text-align: center; color: #888;"></p>
+        <div id="contenedorVentas"></div>
         <div class="resumen-final">
             <div class="r-item"><span>Efectivo Contado:</span> <span id="totalContado" style="color:var(--success)">L. 0.00</span></div>
             <div class="r-item"><span>Abonos/Recuperado:</span> <span id="totalRecuperado" style="color:var(--pago)">L. 0.00</span></div>
             <div class="r-item"><span>Nuevos Fiados:</span> <span id="totalFiado" style="color:var(--danger)">L. 0.00</span></div>
-            <hr style="border-color: #333;">
+            <hr>
             <div class="r-item" style="font-size:1.4rem; font-weight:bold;">
                 <span>CAJA TOTAL:</span> <span id="totalCajaEfectivo" style="color:var(--success)">L. 0.00</span>
             </div>
@@ -78,7 +88,7 @@
 
     <script type="module">
         import { db, auth } from "./auth-facturacion.js";
-        import { collection, query, where, onSnapshot, Timestamp, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, query, where, onSnapshot, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let movimientosGlobales = [];
         let fechaFiltro = new Date();
@@ -86,24 +96,29 @@
 
         document.getElementById('fecha-reporte').innerText = new Date().toLocaleDateString();
 
-        // Reloj
+        // --- RELOJ Y AUTO-DESCARGA A LAS 12 AM ---
         setInterval(() => {
-            document.getElementById('reloj-digital').innerText = new Date().toLocaleTimeString();
+            const ahora = new Date();
+            document.getElementById('reloj-digital').innerText = ahora.toLocaleTimeString();
+
+            // Si son exactamente las 00:00 (o un par de segundos después)
+            if (ahora.getHours() === 0 && ahora.getMinutes() === 0 && ahora.getSeconds() === 0) {
+                console.log("Media noche detectada. Iniciando auto-reporte...");
+                descargarPDF();
+                // Esperamos un poco para que se descargue y reiniciamos
+                setTimeout(() => {
+                    location.reload(); // Recarga la página para limpiar todo al día siguiente
+                }, 5000);
+            }
         }, 1000);
 
-        auth.onAuthStateChanged(async (user) => {
-            if (user) {
-                // Obtenemos ID de empresa para la jerarquía Admin/Cajero
-                const userDoc = await getDoc(doc(db, "users", user.uid));
-                const empresaID = userDoc.data()?.empresaID || user.uid;
-                escucharDatos(empresaID);
-            }
+        auth.onAuthStateChanged(user => {
+            if (user) escucharDatos(user.uid);
         });
 
-        function escucharDatos(idVinculo) {
-            // Escuchamos las 3 colecciones relevantes
-            ["ventas", "deudas", "cierres"].forEach(coll => {
-                const q = query(collection(db, coll), where("empresaID", "==", idVinculo), where("fecha", ">=", Timestamp.fromDate(fechaFiltro)));
+        function escucharDatos(uid) {
+            ["ventas", "deudas"].forEach(coll => {
+                const q = query(collection(db, coll), where("owner", "==", uid), where("fecha", ">=", Timestamp.fromDate(fechaFiltro)));
                 onSnapshot(q, (snap) => {
                     movimientosGlobales = movimientosGlobales.filter(m => m.coll !== coll);
                     snap.forEach(doc => movimientosGlobales.push({ id: doc.id, coll: coll, ...doc.data() }));
@@ -119,56 +134,55 @@
             let tContado = 0, tFiado = 0, tRecuperado = 0;
 
             movimientosGlobales.forEach(v => {
-                const estadoRaw = (v.estado || v.tipo || "efectivo").toLowerCase();
-                let clase = "", color = "var(--success)", txt = "EFECTIVO";
+                const estado = (v.estado || "pagado").toLowerCase();
+                let clase = "", color = "var(--success)", txt = "PAGADO";
 
-                if (estadoRaw === "pendiente" || estadoRaw === "fiado") {
+                if (estado === "pendiente") {
                     clase = "card-pendiente"; color = "var(--danger)"; txt = "PENDIENTE";
-                    tFiado += (v.total || 0);
-                } else if (estadoRaw === "abonado") {
+                    tFiado += v.total;
+                } else if (estado === "abonado") {
                     clase = "card-abonado"; color = "var(--warning)"; txt = "ABONADO";
                     tRecuperado += (v.abono || 0);
-                } else {
-                    tContado += (v.total || 0);
-                }
+                } else if (estado === "pagado" && v.coll === "deudas") {
+                    clase = "card-pagado-amarillo"; color = "var(--pago)"; txt = "DEUDA PAGADA";
+                    tRecuperado += v.total;
+                } else { tContado += v.total; }
 
-                // Cliente + Productos
-                const nombreCliente = v.cliente || v.empresa || "Cliente General";
-                const filasProds = Array.isArray(v.productos) ? v.productos.map(p => `
-                    <tr><td>${p.cantidad || 1}x ${p.nombre || "Item"}</td><td style="text-align:right">L. ${(p.precio || 0).toFixed(2)}</td></tr>
-                `).join('') : `<tr><td>Operación: ${v.tipo || 'Venta'}</td><td style="text-align:right">-</td></tr>`;
+                // --- SOLUCIÓN AL [OBJECT OBJECT] ---
+                const filasProds = Array.isArray(v.productos) ? v.productos.map(p => {
+                    if (typeof p === 'object' && p !== null) {
+                        return `<tr><td>${p.cantidad || 1}x ${p.nombre || p.descripcion || "Item"}</td><td style="text-align:right">L. ${((p.cantidad || 1) * (p.precio || 0)).toFixed(2)}</td></tr>`;
+                    }
+                    return `<tr><td>${p}</td></tr>`;
+                }).join('') : '<tr><td>Registro de saldo</td></tr>';
 
                 const card = document.createElement('div');
                 card.className = `venta-card ${clase}`;
                 card.innerHTML = `
                     <div style="display:flex; justify-content:space-between">
-                        <div>
-                            <span class="cliente-nombre">${nombreCliente.toUpperCase()}</span><br>
-                            <small style="color:#666">${v.fecha?.toDate().toLocaleTimeString() || ''}</small>
-                        </div>
+                        <div><span class="cliente-nombre">${v.cliente}</span><br><small>${v.fecha?.toDate().toLocaleTimeString()}</small></div>
                         <span class="status-badge" style="background:${color}">${txt}</span>
                     </div>
                     <table>${filasProds}</table>
-                    <div style="text-align:right; font-weight:bold; color:${color}; border-top:1px solid #333; margin-top:5px; padding-top:5px;">
-                        TOTAL: L. ${(v.total || 0).toLocaleString()}
-                    </div>
+                    <div style="text-align:right; font-weight:bold; color:${color}">L. ${v.total.toFixed(2)}</div>
                 `;
                 contenedor.appendChild(card);
             });
 
-            document.getElementById('totalContado').innerText = `L. ${tContado.toLocaleString()}`;
-            document.getElementById('totalFiado').innerText = `L. ${tFiado.toLocaleString()}`;
-            document.getElementById('totalCajaEfectivo').innerText = `L. ${(tContado + tRecuperado).toLocaleString()}`;
+            document.getElementById('totalContado').innerText = `L. ${tContado.toFixed(2)}`;
+            document.getElementById('totalRecuperado').innerText = `L. ${tRecuperado.toFixed(2)}`;
+            document.getElementById('totalFiado').innerText = `L. ${tFiado.toFixed(2)}`;
+            document.getElementById('totalCajaEfectivo').innerText = `L. ${(tContado + tRecuperado).toFixed(2)}`;
         }
 
-        document.getElementById('btnDescargar').addEventListener('click', () => {
-            const element = document.getElementById('area-impresion');
-            html2pdf().set({
-                margin: 10, filename: `Reporte_DKS_${new Date().toISOString().split('T')[0]}.pdf`,
+        window.descargarPDF = function() {
+            const elemento = document.getElementById('area-impresion');
+            return html2pdf().set({
+                margin: 10, filename: `CIERRE_DKS_${new Date().toISOString().split('T')[0]}.pdf`,
                 html2canvas: { scale: 2, backgroundColor: '#0a0a0a' },
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            }).from(element).save();
-        });
+            }).from(elemento).save();
+        }
     </script>
 </body>
 </html>
