@@ -43,12 +43,12 @@
         <p id="fecha-reporte" style="text-align: center; color: #888;"></p>
         
         <div id="contenedorVentas">
-            <p style="text-align:center; color:#555;">Cargando movimientos de la empresa...</p>
+            <p style="text-align:center; color:#555;">Sincronizando movimientos...</p>
         </div>
 
         <div class="resumen-final">
             <div class="r-item"><span>Efectivo Contado:</span> <span id="totalContado" style="color:var(--success)">L. 0.00</span></div>
-            <div class="r-item"><span>Recuperación de Deudas (Abonos):</span> <span id="totalRecuperado" style="color:var(--pago)">L. 0.00</span></div>
+            <div class="r-item"><span>Recuperación (Abonos):</span> <span id="totalRecuperado" style="color:var(--pago)">L. 0.00</span></div>
             <div class="r-item"><span>Ventas al Crédito (Fiado):</span> <span id="totalFiado" style="color:var(--danger)">L. 0.00</span></div>
             <hr style="border-color: var(--dorado)">
             <div class="r-item" style="font-size:1.4rem; font-weight:bold;">
@@ -65,13 +65,6 @@
         let fechaFiltro = new Date();
         fechaFiltro.setHours(0, 0, 0, 0);
 
-        document.getElementById('fecha-reporte').innerText = new Date().toLocaleDateString('es-HN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-        setInterval(() => {
-            const reloj = document.getElementById('reloj-digital');
-            if (reloj) reloj.innerText = new Date().toLocaleTimeString();
-        }, 1000);
-
         async function inicializar() {
             const userData = await verificarPermisos();
             if (userData && userData.empresa) {
@@ -79,11 +72,10 @@
                 escucharDatos(userData.empresa);
             }
         }
-
         inicializar();
 
         function escucharDatos(nombreEmpresa) {
-            const colecciones = ["ventas", "deudas", "cierres"];
+            const colecciones = ["ventas", "deudas"];
             colecciones.forEach(collName => {
                 const q = query(
                     collection(db, collName), 
@@ -104,45 +96,31 @@
 
         function dibujar() {
             const contenedor = document.getElementById('contenedorVentas');
-            if (movimientosGlobales.length === 0) {
-                contenedor.innerHTML = "<p style='text-align:center; color:#555;'>No hay movimientos registrados hoy.</p>";
-                return;
-            }
-
             contenedor.innerHTML = "";
             let tContado = 0, tFiado = 0, tRecuperado = 0;
 
             movimientosGlobales.forEach(v => {
-                // NORMALIZACIÓN DE ESTADOS
-                const estado = (v.estado || v.tipo || "efectivo").toLowerCase().trim();
-                let clase = "", color = "var(--success)", txt = "PAGADO", htmlSaldo = "";
+                const estado = (v.estado || "").toLowerCase().trim();
+                let clase = "", color = "var(--success)", txt = "EFECTIVO", htmlExtra = "";
 
-                if (estado === "pendiente" || estado === "fiado") {
-                    clase = "card-pendiente"; color = "var(--danger)"; txt = "PENDIENTE";
+                if (estado === "pendiente") {
+                    clase = "card-pendiente"; color = "var(--danger)"; txt = "FIADO";
                     tFiado += Number(v.total || 0);
-                } else if (estado === "abonado") {
+                } 
+                else if (estado === "abonado") {
                     clase = "card-abonado"; color = "var(--warning)"; txt = "ABONADO";
-                    const abonoActual = Number(v.abono || 0);
-                    const totalDeuda = Number(v.total || 0);
-                    tRecuperado += abonoActual;
-                    htmlSaldo = `<span class="saldo-info">Saldo restante: L. ${(totalDeuda - abonoActual).toLocaleString()}</span>`;
-                } else {
+                    // Según tu esquema: ultimoAbono es lo recaudado hoy, total es el saldo pendiente
+                    const recaudadoHoy = Number(v.ultimoAbono || 0);
+                    const saldoPendiente = Number(v.total || 0);
+                    
+                    tRecuperado += recaudadoHoy;
+                    htmlExtra = `
+                        <span style="color:var(--pago); font-weight:bold; display:block; margin-top:5px;">Abono Recibido: L. ${recaudadoHoy.toLocaleString()}</span>
+                        <span class="saldo-info">Saldo Pendiente: L. ${saldoPendiente.toLocaleString()}</span>
+                    `;
+                } 
+                else {
                     tContado += Number(v.total || 0);
-                }
-
-                const cliente = v.cliente || "Consumidor Final";
-                const vendedor = v.vendedor || "No especificado";
-
-                let htmlProds = "";
-                if (Array.isArray(v.productos)) {
-                    htmlProds = v.productos.map(p => `
-                        <tr>
-                            <td>${p.cantidad || 1}x ${p.nombre || "Producto"}</td>
-                            <td style="text-align:right">L. ${Number(p.precio || 0).toFixed(2)}</td>
-                        </tr>
-                    `).join('');
-                } else {
-                    htmlProds = `<tr><td>${v.tipo || "Registro Manual"}</td><td style="text-align:right">L. ${Number(v.total || 0).toFixed(2)}</td></tr>`;
                 }
 
                 const card = document.createElement('div');
@@ -150,16 +128,14 @@
                 card.innerHTML = `
                     <div style="display:flex; justify-content:space-between">
                         <div>
-                            <span class="cliente-nombre">${cliente.toUpperCase()}</span><br>
-                            <span class="vendedor-info">Vendedor: ${vendedor}</span><br>
+                            <span class="cliente-nombre">${(v.cliente || "Consumidor Final").toUpperCase()}</span><br>
                             <small style="color:#777">${v.fecha?.toDate().toLocaleTimeString()}</small>
                         </div>
                         <span class="status-badge" style="background:${color}">${txt}</span>
                     </div>
-                    <table>${htmlProds}</table>
-                    ${htmlSaldo}
+                    ${htmlExtra}
                     <div style="text-align:right; font-weight:bold; color:${color}; border-top: 1px solid #333; margin-top:5px; padding-top:5px;">
-                        ${estado === 'abonado' ? 'ABONADO HOY: L. ' + Number(v.abono).toLocaleString() : 'TOTAL: L. ' + Number(v.total).toLocaleString()}
+                        ${estado === 'abonado' ? 'OPERACIÓN CRÉDITO' : 'TOTAL: L. ' + Number(v.total || 0).toLocaleString()}
                     </div>
                 `;
                 contenedor.appendChild(card);
@@ -180,6 +156,12 @@
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             }).from(elemento).save();
         };
+
+        setInterval(() => {
+            const r = document.getElementById('reloj-digital');
+            if(r) r.innerText = new Date().toLocaleTimeString();
+        }, 1000);
+        document.getElementById('fecha-reporte').innerText = new Date().toLocaleDateString('es-HN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     </script>
 </body>
 </html>
