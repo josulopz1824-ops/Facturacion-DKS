@@ -13,7 +13,7 @@
             --text: #ffffff; --border: #333;
         }
         body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
-        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 20px; }
         .btn { padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; border: none; background: var(--dorado); color: black; }
         .venta-card { background: var(--card); border-radius: 8px; padding: 15px; border: 1px solid #222; margin-bottom: 15px; border-left: 6px solid var(--success); }
         .card-pendiente { border-left-color: var(--danger) !important; }
@@ -23,13 +23,17 @@
         table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9rem; }
         .resumen-final { background: #111; padding: 25px; border-radius: 12px; border: 1px solid var(--dorado); }
         .r-item { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .vendedor-info { font-size: 0.75rem; color: #666; font-style: italic; }
     </style>
 </head>
 <body>
 
     <header>
         <h2 id="reloj-digital" style="color: var(--dorado); font-family: monospace;">00:00:00</h2>
-        <h2>DKS - REPORTE OPERATIVO</h2>
+        <div style="text-align: right;">
+            <h2 style="margin:0;">DKS - REPORTE OPERATIVO</h2>
+            <small id="nombre-sucursal" style="color: var(--dorado); text-transform: uppercase;"></small>
+        </div>
         <button class="btn" id="btnDescargar"><i class="fas fa-file-pdf"></i> PDF REPORTE</button>
     </header>
 
@@ -38,7 +42,7 @@
         <p id="fecha-reporte" style="text-align: center; color: #888;"></p>
         
         <div id="contenedorVentas">
-            <p style="text-align:center; color:#555;">Cargando movimientos del día...</p>
+            <p style="text-align:center; color:#555;">Cargando movimientos de la empresa...</p>
         </div>
 
         <div class="resumen-final">
@@ -53,8 +57,9 @@
     </div>
 
     <script type="module">
-        import { db, auth } from "./auth-facturacion.js";
-        import { collection, query, where, onSnapshot, Timestamp, getDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        // Importamos tu lógica de auth y la función de permisos
+        import { db, auth, verificarPermisos } from "./auth-facturacion.js";
+        import { collection, query, where, onSnapshot, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let movimientosGlobales = [];
         let fechaFiltro = new Date();
@@ -64,42 +69,39 @@
 
         // Reloj
         setInterval(() => {
-            document.getElementById('reloj-digital').innerText = new Date().toLocaleTimeString();
+            const reloj = document.getElementById('reloj-digital');
+            if (reloj) reloj.innerText = new Date().toLocaleTimeString();
         }, 1000);
 
-        auth.onAuthStateChanged(async (user) => {
-            if (user) {
-                // EXPLICACIÓN: Buscamos el ID de la empresa del usuario para que Admin y Cajero vean lo mismo
-                const userSnap = await getDoc(doc(db, "users", user.uid));
-                const userData = userSnap.data();
-                // Si el usuario tiene empresaID lo usamos, si no, es que él es el Admin y usamos su UID
-                const idParaFiltrar = userData?.empresaID || user.uid;
-                
-                escucharDatos(idParaFiltrar);
+        // 1. Verificamos permisos al cargar
+        async function inicializar() {
+            const userData = await verificarPermisos();
+            if (userData && userData.empresa) {
+                document.getElementById('nombre-sucursal').innerText = userData.empresa.replace(/_/g, ' ');
+                escucharDatos(userData.empresa);
             }
-        });
+        }
 
-        function escucharDatos(empresaID) {
-            // Escuchamos Ventas, Deudas y Cierres (como en tu Firebase)
+        inicializar();
+
+        function escucharDatos(nombreEmpresa) {
             const colecciones = ["ventas", "deudas", "cierres"];
             
             colecciones.forEach(collName => {
-                // Filtramos por empresaID (Jerarquía DKS) y por Fecha (Hoy)
+                // Filtramos por el campo "empresa" que es el que maneja tu perfil de Firestore
                 const q = query(
                     collection(db, collName), 
-                    where("empresaID", "==", empresaID), 
+                    where("empresa", "==", nombreEmpresa), 
                     where("fecha", ">=", Timestamp.fromDate(fechaFiltro))
                 );
 
                 onSnapshot(q, (snap) => {
-                    // Limpiamos los datos viejos de esta colección antes de meter los nuevos
                     movimientosGlobales = movimientosGlobales.filter(m => m.coll !== collName);
                     
                     snap.forEach(doc => {
                         movimientosGlobales.push({ id: doc.id, coll: collName, ...doc.data() });
                     });
 
-                    // Ordenar por hora
                     movimientosGlobales.sort((a, b) => b.fecha?.toMillis() - a.fecha?.toMillis());
                     dibujar();
                 });
@@ -117,7 +119,6 @@
             let tContado = 0, tFiado = 0, tRecuperado = 0;
 
             movimientosGlobales.forEach(v => {
-                // Determinar el estado para los colores de DKS
                 const estado = (v.estado || v.tipo || "pagado").toLowerCase();
                 let clase = "", color = "var(--success)", txt = "PAGADO";
 
@@ -131,10 +132,9 @@
                     tContado += (v.total || 0);
                 }
 
-                // Extraer el nombre (empresa o cliente)
-                const nombreAMostrar = v.empresa || v.cliente || "Consumidor Final";
+                const cliente = v.cliente || "Consumidor Final";
+                const vendedor = v.vendedor || "No especificado";
 
-                // Pintar productos
                 let htmlProds = "";
                 if (Array.isArray(v.productos)) {
                     htmlProds = v.productos.map(p => `
@@ -152,7 +152,8 @@
                 card.innerHTML = `
                     <div style="display:flex; justify-content:space-between">
                         <div>
-                            <span class="cliente-nombre">${nombreAMostrar.toUpperCase()}</span><br>
+                            <span class="cliente-nombre">${cliente.toUpperCase()}</span><br>
+                            <span class="vendedor-info">Vendedor: ${vendedor}</span><br>
                             <small style="color:#777">${v.fecha?.toDate().toLocaleTimeString()}</small>
                         </div>
                         <span class="status-badge" style="background:${color}">${txt}</span>
@@ -165,14 +166,12 @@
                 contenedor.appendChild(card);
             });
 
-            // Actualizar Resumen Final
             document.getElementById('totalContado').innerText = `L. ${tContado.toLocaleString()}`;
             document.getElementById('totalRecuperado').innerText = `L. ${tRecuperado.toLocaleString()}`;
             document.getElementById('totalFiado').innerText = `L. ${tFiado.toLocaleString()}`;
             document.getElementById('totalCajaEfectivo').innerText = `L. ${(tContado + tRecuperado).toLocaleString()}`;
         }
 
-        // Botón PDF arreglado para Módulos
         document.getElementById('btnDescargar').onclick = () => {
             const elemento = document.getElementById('area-impresion');
             html2pdf().set({
