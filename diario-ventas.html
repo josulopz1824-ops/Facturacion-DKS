@@ -20,10 +20,14 @@
         .card-abonado { border-left-color: var(--warning) !important; }
         .cliente-nombre { color: var(--dorado); font-size: 1.1rem; font-weight: bold; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #000; }
-        table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.9rem; }
+        
+        /* Estilo para la tablita de productos */
+        .tabla-productos { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.85rem; color: #ccc; }
+        .tabla-productos th { text-align: left; color: var(--dorado); border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .tabla-productos td { padding: 4px 0; border-bottom: 1px solid #222; }
+
         .resumen-final { background: #111; padding: 25px; border-radius: 12px; border: 1px solid var(--dorado); }
         .r-item { display: flex; justify-content: space-between; margin-bottom: 10px; }
-        .vendedor-info { font-size: 0.75rem; color: #666; font-style: italic; }
         .saldo-info { font-size: 0.85rem; color: var(--danger); font-weight: bold; margin-top: 5px; display: block; }
     </style>
 </head>
@@ -103,16 +107,15 @@
                 const estado = (v.estado || "").toLowerCase().trim();
                 let clase = "", color = "var(--success)", txt = "EFECTIVO", htmlExtra = "";
 
+                // Lógica de totales
                 if (estado === "pendiente") {
                     clase = "card-pendiente"; color = "var(--danger)"; txt = "FIADO";
                     tFiado += Number(v.total || 0);
                 } 
                 else if (estado === "abonado") {
                     clase = "card-abonado"; color = "var(--warning)"; txt = "ABONADO";
-                    // Según tu esquema: ultimoAbono es lo recaudado hoy, total es el saldo pendiente
                     const recaudadoHoy = Number(v.ultimoAbono || 0);
                     const saldoPendiente = Number(v.total || 0);
-                    
                     tRecuperado += recaudadoHoy;
                     htmlExtra = `
                         <span style="color:var(--pago); font-weight:bold; display:block; margin-top:5px;">Abono Recibido: L. ${recaudadoHoy.toLocaleString()}</span>
@@ -121,6 +124,33 @@
                 } 
                 else {
                     tContado += Number(v.total || 0);
+                }
+
+                // Lógica para listar productos
+                let htmlProductos = "";
+                if (v.productos && Array.isArray(v.productos) && v.productos.length > 0) {
+                    htmlProductos = `
+                        <table class="tabla-productos">
+                            <thead>
+                                <tr>
+                                    <th>Cant.</th>
+                                    <th>Producto</th>
+                                    <th style="text-align:right">Precio</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${v.productos.map(p => `
+                                    <tr>
+                                        <td>${p.cantidad} ${p.medida || ''}</td>
+                                        <td>${p.nombre}</td>
+                                        <td style="text-align:right">L. ${Number(p.precio).toFixed(2)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                } else {
+                    htmlProductos = `<p style="font-size:0.8rem; color:#666;">Sin productos registrados</p>`;
                 }
 
                 const card = document.createElement('div');
@@ -133,7 +163,10 @@
                         </div>
                         <span class="status-badge" style="background:${color}">${txt}</span>
                     </div>
+                    
+                    ${htmlProductos}
                     ${htmlExtra}
+
                     <div style="text-align:right; font-weight:bold; color:${color}; border-top: 1px solid #333; margin-top:5px; padding-top:5px;">
                         ${estado === 'abonado' ? 'OPERACIÓN CRÉDITO' : 'TOTAL: L. ' + Number(v.total || 0).toLocaleString()}
                     </div>
