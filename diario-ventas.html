@@ -24,6 +24,7 @@
         .resumen-final { background: #111; padding: 25px; border-radius: 12px; border: 1px solid var(--dorado); }
         .r-item { display: flex; justify-content: space-between; margin-bottom: 10px; }
         .vendedor-info { font-size: 0.75rem; color: #666; font-style: italic; }
+        .saldo-info { font-size: 0.85rem; color: var(--danger); font-weight: bold; margin-top: 5px; display: block; }
     </style>
 </head>
 <body>
@@ -47,7 +48,7 @@
 
         <div class="resumen-final">
             <div class="r-item"><span>Efectivo Contado:</span> <span id="totalContado" style="color:var(--success)">L. 0.00</span></div>
-            <div class="r-item"><span>Recuperación de Deudas:</span> <span id="totalRecuperado" style="color:var(--pago)">L. 0.00</span></div>
+            <div class="r-item"><span>Recuperación de Deudas (Abonos):</span> <span id="totalRecuperado" style="color:var(--pago)">L. 0.00</span></div>
             <div class="r-item"><span>Ventas al Crédito (Fiado):</span> <span id="totalFiado" style="color:var(--danger)">L. 0.00</span></div>
             <hr style="border-color: var(--dorado)">
             <div class="r-item" style="font-size:1.4rem; font-weight:bold;">
@@ -57,7 +58,6 @@
     </div>
 
     <script type="module">
-        // Importamos tu lógica de auth y la función de permisos
         import { db, auth, verificarPermisos } from "./auth-facturacion.js";
         import { collection, query, where, onSnapshot, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
@@ -67,13 +67,11 @@
 
         document.getElementById('fecha-reporte').innerText = new Date().toLocaleDateString('es-HN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-        // Reloj
         setInterval(() => {
             const reloj = document.getElementById('reloj-digital');
             if (reloj) reloj.innerText = new Date().toLocaleTimeString();
         }, 1000);
 
-        // 1. Verificamos permisos al cargar
         async function inicializar() {
             const userData = await verificarPermisos();
             if (userData && userData.empresa) {
@@ -86,9 +84,7 @@
 
         function escucharDatos(nombreEmpresa) {
             const colecciones = ["ventas", "deudas", "cierres"];
-            
             colecciones.forEach(collName => {
-                // Filtramos por el campo "empresa" que es el que maneja tu perfil de Firestore
                 const q = query(
                     collection(db, collName), 
                     where("empresa", "==", nombreEmpresa), 
@@ -97,11 +93,9 @@
 
                 onSnapshot(q, (snap) => {
                     movimientosGlobales = movimientosGlobales.filter(m => m.coll !== collName);
-                    
                     snap.forEach(doc => {
                         movimientosGlobales.push({ id: doc.id, coll: collName, ...doc.data() });
                     });
-
                     movimientosGlobales.sort((a, b) => b.fecha?.toMillis() - a.fecha?.toMillis());
                     dibujar();
                 });
@@ -119,17 +113,21 @@
             let tContado = 0, tFiado = 0, tRecuperado = 0;
 
             movimientosGlobales.forEach(v => {
-                const estado = (v.estado || v.tipo || "pagado").toLowerCase();
-                let clase = "", color = "var(--success)", txt = "PAGADO";
+                // NORMALIZACIÓN DE ESTADOS
+                const estado = (v.estado || v.tipo || "efectivo").toLowerCase().trim();
+                let clase = "", color = "var(--success)", txt = "PAGADO", htmlSaldo = "";
 
                 if (estado === "pendiente" || estado === "fiado") {
                     clase = "card-pendiente"; color = "var(--danger)"; txt = "PENDIENTE";
-                    tFiado += (v.total || 0);
+                    tFiado += Number(v.total || 0);
                 } else if (estado === "abonado") {
                     clase = "card-abonado"; color = "var(--warning)"; txt = "ABONADO";
-                    tRecuperado += (v.abono || 0);
+                    const abonoActual = Number(v.abono || 0);
+                    const totalDeuda = Number(v.total || 0);
+                    tRecuperado += abonoActual;
+                    htmlSaldo = `<span class="saldo-info">Saldo restante: L. ${(totalDeuda - abonoActual).toLocaleString()}</span>`;
                 } else {
-                    tContado += (v.total || 0);
+                    tContado += Number(v.total || 0);
                 }
 
                 const cliente = v.cliente || "Consumidor Final";
@@ -140,11 +138,11 @@
                     htmlProds = v.productos.map(p => `
                         <tr>
                             <td>${p.cantidad || 1}x ${p.nombre || "Producto"}</td>
-                            <td style="text-align:right">L. ${(p.precio || 0).toFixed(2)}</td>
+                            <td style="text-align:right">L. ${Number(p.precio || 0).toFixed(2)}</td>
                         </tr>
                     `).join('');
                 } else {
-                    htmlProds = `<tr><td>${v.tipo || "Registro Manual"}</td><td style="text-align:right">L. ${(v.total || 0).toFixed(2)}</td></tr>`;
+                    htmlProds = `<tr><td>${v.tipo || "Registro Manual"}</td><td style="text-align:right">L. ${Number(v.total || 0).toFixed(2)}</td></tr>`;
                 }
 
                 const card = document.createElement('div');
@@ -159,8 +157,9 @@
                         <span class="status-badge" style="background:${color}">${txt}</span>
                     </div>
                     <table>${htmlProds}</table>
+                    ${htmlSaldo}
                     <div style="text-align:right; font-weight:bold; color:${color}; border-top: 1px solid #333; margin-top:5px; padding-top:5px;">
-                        TOTAL: L. ${(v.total || 0).toLocaleString()}
+                        ${estado === 'abonado' ? 'ABONADO HOY: L. ' + Number(v.abono).toLocaleString() : 'TOTAL: L. ' + Number(v.total).toLocaleString()}
                     </div>
                 `;
                 contenedor.appendChild(card);
