@@ -89,7 +89,7 @@
 
     <script type="module">
         import { auth, db, verificarPermisos } from './auth-facturacion.js';
-        import { collection, onSnapshot, addDoc, doc, updateDoc, increment, serverTimestamp, query, where, getDoc } 
+        import { collection, onSnapshot, addDoc, doc, updateDoc, increment, serverTimestamp, query, where, getDoc, getDocs } 
         from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let productosLocal = [];
@@ -233,6 +233,36 @@
             if (nombreInput === undefined) return;
             let cliente = nombreInput.trim() === "" ? "Consumidor Final" : nombreInput;
 
+            // --- VALIDACIÓN DE DEUDORES ---
+            if (cliente !== "Consumidor Final") {
+                const qDeuda = query(
+                    collection(db, "deudas"), 
+                    where("empresa", "==", empresaActual),
+                    where("cliente", "==", cliente)
+                );
+                const snapshotDeuda = await getDocs(qDeuda);
+                let saldoPendiente = 0;
+
+                snapshotDeuda.forEach(doc => {
+                    const d = doc.data();
+                    if (d.estado === "pendiente" || d.estado === "abonado") {
+                        saldoPendiente += Number(d.total || 0);
+                    }
+                });
+
+                if (saldoPendiente > 0) {
+                    const checkDeuda = await Swal.fire({
+                        title: '¡ALERTA DE DEUDOR!',
+                        html: `El cliente <b>${cliente}</b> debe actualmente: <br><b style="color:var(--danger); font-size: 1.4rem;">L. ${saldoPendiente.toFixed(2)}</b><br><br>¿Deseas proceder con la venta?`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, continuar',
+                        cancelButtonText: 'No, detener'
+                    });
+                    if (!checkDeuda.isConfirmed) return;
+                }
+            }
+
             const totalFinal = parseFloat(document.getElementById('totalVenta').innerText);
             try {
                 const ventaData = {
@@ -257,17 +287,15 @@
 
                 ultimaVenta = { ...ventaData, fecha: new Date() };
                 await Swal.fire('✅ ÉXITO', 'Venta registrada correctamente', 'success');
-                await window.generarFacturaPDF(); // Llamada asíncrona
+                await window.generarFacturaPDF(); 
                 carrito = [];
                 window.actualizarTicket();
             } catch (e) { Swal.fire('Error', e.message, 'error'); }
         }
 
-        // --- FUNCIÓN ACTUALIZADA PARA LEER CONFIGURACIÓN ---
         window.generarFacturaPDF = async () => {
             if(!ultimaVenta) return;
 
-            // Datos por defecto por si no hay configuración
             let config = {
                 nombre: nombreLocalGlobal,
                 rtn: "---",
@@ -276,7 +304,6 @@
                 mensaje: "¡Gracias por su compra!"
             };
 
-            // Intentar obtener datos reales de la empresa
             try {
                 const confRef = doc(db, "configuracion", empresaActual);
                 const confSnap = await getDoc(confRef);
@@ -345,5 +372,4 @@
         };
     </script>
 </body>
-
 </html>
