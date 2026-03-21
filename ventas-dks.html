@@ -123,13 +123,16 @@
                     const p = { id: d.id, ...d.data() };
                     productosLocal.push(p);
                     if(p.stock > 0) {
-                        grid.innerHTML += `
-                        <div class="item-card" onclick="pedirCantidad('${p.id}')">
+                        const card = document.createElement('div');
+                        card.className = 'item-card';
+                        card.onclick = () => window.pedirCantidad(p.id);
+                        card.innerHTML = `
                             <div style="color:var(--dorado); font-weight:bold;">${p.nombre}</div>
                             <small>${p.categoria}</small>
                             <div style="margin-top:10px;">L. ${Number(p.precio).toFixed(2)}</div>
                             <small style="color:#888;">Stock: ${p.stock}</small>
-                        </div>`;
+                        `;
+                        grid.appendChild(card);
                     }
                 });
             });
@@ -180,10 +183,11 @@
                 <div class="tax-row"><span>Subtotal:</span><span>L. ${subtotal.toFixed(2)}</span></div>
                 <div class="tax-row"><span>Impuesto (${aplicarISV ? porcentaje : 0}%):</span><span>L. ${valorISV.toFixed(2)}</span></div>
             `;
-        }
+        };
 
         window.quitar = (index) => { carrito.splice(index, 1); window.actualizarTicket(); };
 
+        // --- FUNCIÓN UNIFICADA Y CORREGIDA ---
         async function procesarTransaccion(tipo) {
             const user = auth.currentUser;
             if(!user || carrito.length === 0) return Swal.fire('Caja vacía', 'Agregue productos primero', 'warning');
@@ -195,7 +199,6 @@
             if (nombreInput === undefined) return;
             let cliente = nombreInput.trim() === "" ? "Consumidor Final" : nombreInput;
 
-            // --- LÓGICA DE ALERTA DE DEUDOR ---
             if (cliente !== "Consumidor Final") {
                 const qDeuda = query(collection(db, "deudas"), where("empresa", "==", empresaActual), where("cliente", "==", cliente.toUpperCase()));
                 const snapshotDeuda = await getDocs(qDeuda);
@@ -216,34 +219,30 @@
             }
 
             const totalFinal = parseFloat(document.getElementById('totalVenta').innerText);
-            
-            // --- CORRECCIÓN 1: Convertir carrito a TEXTO para el reporte ---
             const productosTexto = carrito.map(item => `${item.cantidad}x ${item.nombre}`).join(', ');
 
             try {
                 const ventaData = {
                     cliente: cliente.toUpperCase(), 
-                    productos: productosTexto, // <--- Ahora es texto plano, no más [object Object]
+                    productos: productosTexto, 
                     total: totalFinal,
-                    totalOriginal: totalFinal, // CORRECCIÓN 2: Guardamos el original para el reporte
+                    totalOriginal: totalFinal,
                     empresa: empresaActual, 
                     vendedor: user.uid, 
                     metodo: tipo === "credito" ? "Crédito" : "Efectivo",
                     estado: tipo === "credito" ? "pendiente" : "pagado",
-                    ultimoAbono: tipo === "credito" ? 0 : totalFinal, // CORRECCIÓN 3: Si paga hoy, entra a caja
+                    ultimoAbono: tipo === "credito" ? 0 : totalFinal,
                     isvAplicado: document.getElementById('checkISV').checked ? document.getElementById('taxPercent').value : 0,
                     fecha: serverTimestamp()
                 };
 
-                // Guardar en la colección correspondiente
                 await addDoc(collection(db, tipo === "credito" ? "deudas" : "ventas"), ventaData);
 
-                // Actualizar inventario
                 for(const item of carrito) {
                     await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
                 }
 
-                // Para el PDF usamos una copia con el array original para que no falle el .map de la factura
+                // Guardamos copia para el PDF
                 ultimaVenta = { ...ventaData, productos: [...carrito], fecha: new Date() };
                 
                 await Swal.fire('✅ LISTO', 'Transacción completada', 'success');
@@ -254,31 +253,6 @@
                 console.error(e);
                 Swal.fire('Error', e.message, 'error'); 
             }
-        }
-
-            const totalFinal = parseFloat(document.getElementById('totalVenta').innerText);
-            try {
-                const ventaData = {
-                    cliente, productos: [...carrito], total: totalFinal,
-                    empresa: empresaActual, vendedor: user.uid, 
-                    metodo: tipo === "credito" ? "Crédito" : "Efectivo",
-                    estado: tipo === "credito" ? "pendiente" : "pagado",
-                    isvAplicado: document.getElementById('checkISV').checked ? document.getElementById('taxPercent').value : 0,
-                    fecha: serverTimestamp()
-                };
-
-                await addDoc(collection(db, tipo === "credito" ? "deudas" : "ventas"), ventaData);
-
-                for(const item of carrito) {
-                    await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
-                }
-
-                ultimaVenta = { ...ventaData, fecha: new Date() };
-                await Swal.fire('✅ LISTO', 'Venta registrada', 'success');
-                await window.generarFacturaPDF(); 
-                carrito = [];
-                window.actualizarTicket();
-            } catch (e) { Swal.fire('Error', e.message, 'error'); }
         }
 
         window.generarFacturaPDF = async () => {
@@ -393,6 +367,7 @@
             Swal.fire('Cotización Lista', 'No se afectó el inventario', 'info');
         };
 
+        // EVENTOS DE BOTONES
         document.getElementById('btnFinalizar').onclick = () => procesarTransaccion("efectivo");
         document.getElementById('btnCredito').onclick = () => procesarTransaccion("credito");
         document.getElementById('btnFactura').onclick = () => window.generarFacturaPDF();
