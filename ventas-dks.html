@@ -98,12 +98,6 @@
         let empresaActual = "";
         let nombreLocalGlobal = "Digital Knowledge Solutions";
 
-        const configRapida = {
-            pulperia: [{ n: "Coca-Cola 0.5L", p: 20, i: "🥤" }, { n: "Pan Blanco", p: 35, i: "🍞" }, { n: "Hielo", p: 15, i: "🧊" }],
-            tienda_ropa: [{ n: "Camiseta Básica", p: 180, i: "👕" }, { n: "Calcetines", p: 45, i: "🧦" }],
-            papeleria: [{ n: "Copia B/N", p: 2, i: "📄" }, { n: "Folder", p: 5, i: "📁" }]
-        };
-
         async function iniciarCaja() {
             const userData = await verificarPermisos();
             if (userData) {
