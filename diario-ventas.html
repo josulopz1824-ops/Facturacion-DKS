@@ -61,7 +61,7 @@
     </div>
 
     <script type="module">
-        import { db, auth, verificarPermisos } from "./auth-facturacion.js";
+        import { db, verificarPermisos } from "./auth-facturacion.js";
         import { collection, query, where, onSnapshot, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let movimientosGlobales = [];
@@ -91,7 +91,7 @@
                     snap.forEach(doc => {
                         movimientosGlobales.push({ id: doc.id, coll: collName, ...doc.data() });
                     });
-                    movimientosGlobales.sort((a, b) => b.fecha?.toMillis() - a.fecha?.toMillis());
+                    movimientosGlobales.sort((a, b) => (b.fecha?.toMillis() || 0) - (a.fecha?.toMillis() || 0));
                     dibujar();
                 });
             });
@@ -124,7 +124,7 @@
                     tContado += Number(v.total || 0);
                 }
 
-                // LÓGICA DE PRODUCTOS CORREGIDA (Híbrida para Ventas y Deudas)
+                // LÓGICA DE PRODUCTOS CON CÁLCULO DE PRECIOS PARA DEUDAS
                 let htmlProductos = "";
                 if (v.productos && Array.isArray(v.productos) && v.productos.length > 0) {
                     const esFormatoObjeto = typeof v.productos[0] === 'object';
@@ -135,12 +135,13 @@
                                 <tr>
                                     <th>Cant.</th>
                                     <th>Producto</th>
-                                    <th style="text-align:right">Precio</th>
+                                    <th style="text-align:right">Precio Unit.</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${v.productos.map(p => {
                                     if (esFormatoObjeto) {
+                                        // FORMATO VENTAS: Ya trae precio
                                         return `
                                             <tr>
                                                 <td>${p.cantidad} ${p.medida || ''}</td>
@@ -148,15 +149,19 @@
                                                 <td style="text-align:right">L. ${Number(p.precio || 0).toFixed(2)}</td>
                                             </tr>`;
                                     } else {
-                                        // Para el formato de texto "1x Mouse"
+                                        // FORMATO DEUDAS: Texto "1x Mouse"
                                         const partes = p.split('x ');
-                                        const cant = partes.length > 1 ? partes[0] : '1';
+                                        const cant = partes.length > 1 ? parseFloat(partes[0]) : 1;
                                         const nom = partes.length > 1 ? partes[1] : partes[0];
+                                        
+                                        // Cálculo: Total de la deuda / Cantidad total de items en el array
+                                        const precioSugerido = (Number(v.total || 0) / v.productos.length) / (cant || 1);
+
                                         return `
                                             <tr>
                                                 <td>${cant}</td>
                                                 <td>${nom}</td>
-                                                <td style="text-align:right">---</td>
+                                                <td style="text-align:right">L. ${precioSugerido.toFixed(2)}</td>
                                             </tr>`;
                                     }
                                 }).join('')}
