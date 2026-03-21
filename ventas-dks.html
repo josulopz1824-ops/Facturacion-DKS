@@ -17,18 +17,13 @@
             display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 0.9rem;
             transition: 0.3s; z-index: 9999; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-
         .btn-home:hover { background: #d4af37; color: black; transform: scale(1.05); }
 
-        .search-section { padding: 30px; border-right: 1px solid #222; overflow-y: auto; }
+        .search-section { padding: 30px; border-right: 1px solid #222; overflow-y: auto; padding-top: 80px; }
         .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }
         .item-card { background: var(--card); padding: 15px; border-radius: 10px; border: 1px solid #333; cursor: pointer; transition: 0.2s; }
         .item-card:hover { border-color: var(--dorado); transform: translateY(-3px); }
         
-        .fast-actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid #222; padding-bottom: 20px; }
-        .btn-fast { background: #1a1a1a; border: 1px solid var(--dorado); color: white; padding: 10px 15px; border-radius: 8px; cursor: pointer; transition: 0.3s; font-size: 0.9rem; }
-        .btn-fast:hover { background: var(--dorado); color: black; }
-
         .cart-section { background: #000; padding: 30px; display: flex; flex-direction: column; }
         .cart-items { flex-grow: 1; overflow-y: auto; }
         .cart-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #222; font-size: 0.9rem; }
@@ -54,8 +49,7 @@
 
     <section class="search-section">
         <h1><span id="nombreNegocio">Caja Pro</span> <span style="color:var(--dorado)">DKS</span></h1>
-        <div class="fast-actions" id="fastActionsContainer"></div>
-        <input type="text" id="searchBar" placeholder="🔍 Buscar mi producto..." oninput="filtrarProductos()">
+        <input type="text" id="searchBar" placeholder="🔍 Buscar producto por nombre o categoría..." oninput="filtrarProductos()">
         <div class="product-grid" id="gridProductos"></div>
     </section>
 
@@ -65,7 +59,7 @@
 
         <div class="tax-config-panel">
             <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
-                <span>Configurar Impuesto</span>
+                <span>Aplicar Impuesto</span>
                 <input type="checkbox" id="checkISV" checked onchange="actualizarTicket()" style="width: 20px; height: 20px; cursor: pointer;">
             </div>
             <div class="tax-controls" id="taxControls">
@@ -83,7 +77,7 @@
             
             <button class="btn-pay" id="btnFinalizar">FINALIZAR (EFECTIVO)</button>
             <button class="btn-pay solo-admin" id="btnCredito" style="background: var(--dorado); color: black;">REGISTRAR FIADO (CRÉDITO)</button>
-            <button class="btn-pay solo-admin" id="btnFactura" style="background: #333; color: white; margin-top: 5px;">🖨️ REIMPRIMIR ÚLTIMO RECIBO</button>
+            <button class="btn-pay solo-admin" id="btnFactura" style="background: #333; color: white; margin-top: 5px;">🖨️ REIMPRIMIR ÚLTIMO</button>
         </div>
     </section>
 
@@ -97,12 +91,6 @@
         let ultimaVenta = null;
         let empresaActual = "";
         let nombreLocalGlobal = "Digital Knowledge Solutions";
-
-        const configRapida = {
-            pulperia: [{ n: "Coca-Cola 0.5L", p: 20, i: "🥤" }, { n: "Pan Blanco", p: 35, i: "🍞" }, { n: "Hielo", p: 15, i: "🧊" }],
-            tienda_ropa: [{ n: "Camiseta Básica", p: 180, i: "👕" }, { n: "Calcetines", p: 45, i: "🧦" }],
-            papeleria: [{ n: "Copia B/N", p: 2, i: "📄" }, { n: "Folder", p: 5, i: "📁" }]
-        };
 
         async function iniciarCaja() {
             const userData = await verificarPermisos();
@@ -118,28 +106,11 @@
                     document.getElementById('tituloTicket').innerText = "Ticket (Vendedor)";
                 }
 
-                cargarBotonesRapidos(userData.categorias || []);
                 escucharProductosEmpresa(empresaActual);
             }
         }
 
         iniciarCaja();
-
-        function cargarBotonesRapidos(categorias) {
-            const container = document.getElementById('fastActionsContainer');
-            container.innerHTML = "";
-            categorias.forEach(cat => {
-                if (configRapida[cat]) {
-                    configRapida[cat].forEach(item => {
-                        const btn = document.createElement('button');
-                        btn.className = 'btn-fast';
-                        btn.innerHTML = `${item.i} ${item.n}`;
-                        btn.onclick = () => window.agregarRapidoManual(item.n, item.p);
-                        container.appendChild(btn);
-                    });
-                }
-            });
-        }
 
         function escucharProductosEmpresa(empID) {
             const q = query(collection(db, "productos"), where("empresa", "==", empID));
@@ -155,23 +126,13 @@
                         <div class="item-card" onclick="pedirCantidad('${p.id}')">
                             <div style="color:var(--dorado); font-weight:bold;">${p.nombre}</div>
                             <small>${p.categoria}</small>
-                            <div style="margin-top:10px;">L. ${p.precio.toFixed(2)}</div>
+                            <div style="margin-top:10px;">L. ${Number(p.precio).toFixed(2)}</div>
                             <small style="color:#888;">Stock: ${p.stock}</small>
                         </div>`;
                     }
                 });
             });
         }
-
-        window.agregarRapidoManual = (nombre, precio) => {
-            const itemIndex = carrito.findIndex(item => item.nombre === nombre);
-            if (itemIndex !== -1) {
-                carrito[itemIndex].cantidad += 1;
-            } else {
-                carrito.push({ id: 'fast-' + Date.now(), nombre, precio: parseFloat(precio), cantidad: 1 });
-            }
-            window.actualizarTicket();
-        };
 
         window.pedirCantidad = async (id) => {
             const prod = productosLocal.find(p => p.id === id);
@@ -224,7 +185,7 @@
 
         async function procesarTransaccion(tipo) {
             const user = auth.currentUser;
-            if(!user || carrito.length === 0) return Swal.fire('Error', 'Caja vacía', 'warning');
+            if(!user || carrito.length === 0) return Swal.fire('Caja vacía', 'Agregue productos primero', 'warning');
 
             const { value: nombreInput } = await Swal.fire({
                 title: 'Nombre del Cliente', input: 'text', inputPlaceholder: 'Ej. Juan Pérez', showCancelButton: true
@@ -235,29 +196,19 @@
 
             // --- VALIDACIÓN DE DEUDORES ---
             if (cliente !== "Consumidor Final") {
-                const qDeuda = query(
-                    collection(db, "deudas"), 
-                    where("empresa", "==", empresaActual),
-                    where("cliente", "==", cliente)
-                );
+                const qDeuda = query(collection(db, "deudas"), where("empresa", "==", empresaActual), where("cliente", "==", cliente));
                 const snapshotDeuda = await getDocs(qDeuda);
                 let saldoPendiente = 0;
-
                 snapshotDeuda.forEach(doc => {
                     const d = doc.data();
-                    if (d.estado === "pendiente" || d.estado === "abonado") {
-                        saldoPendiente += Number(d.total || 0);
-                    }
+                    if (d.estado === "pendiente" || d.estado === "abonado") saldoPendiente += Number(d.total || 0);
                 });
 
                 if (saldoPendiente > 0) {
                     const checkDeuda = await Swal.fire({
                         title: '¡ALERTA DE DEUDOR!',
-                        html: `El cliente <b>${cliente}</b> debe actualmente: <br><b style="color:var(--danger); font-size: 1.4rem;">L. ${saldoPendiente.toFixed(2)}</b><br><br>¿Deseas proceder con la venta?`,
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: 'Sí, continuar',
-                        cancelButtonText: 'No, detener'
+                        html: `El cliente tiene un saldo de: <br><b style="color:var(--danger); font-size: 1.4rem;">L. ${saldoPendiente.toFixed(2)}</b><br>¿Proceder?`,
+                        icon: 'warning', showCancelButton: true
                     });
                     if (!checkDeuda.isConfirmed) return;
                 }
@@ -266,11 +217,8 @@
             const totalFinal = parseFloat(document.getElementById('totalVenta').innerText);
             try {
                 const ventaData = {
-                    cliente, 
-                    productos: [...carrito], 
-                    total: totalFinal,
-                    empresa: empresaActual,
-                    vendedor: user.uid, 
+                    cliente, productos: [...carrito], total: totalFinal,
+                    empresa: empresaActual, vendedor: user.uid, 
                     metodo: tipo === "credito" ? "Crédito" : "Efectivo",
                     estado: tipo === "credito" ? "pendiente" : "pagado",
                     isvAplicado: document.getElementById('checkISV').checked ? document.getElementById('taxPercent').value : 0,
@@ -280,13 +228,11 @@
                 await addDoc(collection(db, tipo === "credito" ? "deudas" : "ventas"), ventaData);
 
                 for(const item of carrito) {
-                    if(!item.id.toString().startsWith('fast-')) {
-                        await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
-                    }
+                    await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
                 }
 
                 ultimaVenta = { ...ventaData, fecha: new Date() };
-                await Swal.fire('✅ ÉXITO', 'Venta registrada correctamente', 'success');
+                await Swal.fire('✅ LISTO', 'Venta registrada', 'success');
                 await window.generarFacturaPDF(); 
                 carrito = [];
                 window.actualizarTicket();
@@ -295,24 +241,13 @@
 
         window.generarFacturaPDF = async () => {
             if(!ultimaVenta) return;
-
-            let config = {
-                nombre: nombreLocalGlobal,
-                rtn: "---",
-                telefono: "---",
-                direccion: "Sin dirección",
-                mensaje: "¡Gracias por su compra!"
-            };
-
+            
+            // Cargar configuración global (Logo, RTN, etc)
+            let config = { nombreLocal: nombreLocalGlobal, rtn: "---", telefono: "---", eslogan: "¡Gracias por su compra!", logo: "" };
             try {
-                const confRef = doc(db, "configuracion", empresaActual);
-                const confSnap = await getDoc(confRef);
-                if (confSnap.exists()) {
-                    config = { ...config, ...confSnap.data() };
-                }
-            } catch (error) {
-                console.error("Error cargando config de ticket:", error);
-            }
+                const confSnap = await getDoc(doc(db, "configuraciones", empresaActual));
+                if (confSnap.exists()) config = { ...config, ...confSnap.data() };
+            } catch (e) { console.log("Usando config por defecto"); }
 
             const element = document.createElement('div');
             element.style.width = "260px"; element.style.padding = "15px"; element.style.background = "white";
@@ -321,18 +256,13 @@
             const pct = parseFloat(ultimaVenta.isvAplicado) / 100;
             const sub = ultimaVenta.total / (1 + pct);
             const isv = ultimaVenta.total - sub;
-            const itemsHtml = ultimaVenta.productos.map(i => `
-                <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
-                    <span>${i.cantidad}x ${i.nombre.substring(0,18)}</span>
-                    <span>L.${(i.precio*i.cantidad).toFixed(2)}</span>
-                </div>`).join('');
 
             element.innerHTML = `
                 <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px;">
-                    <h2 style="margin:0; font-size:16px;">${config.nombre.toUpperCase()}</h2>
-                    <p style="margin:2px 0;">RTN: ${config.rtn}</p>
-                    <p style="margin:2px 0;">TEL: ${config.telefono}</p>
-                    <p style="margin:2px 0; font-size:10px;">${config.direccion}</p>
+                    ${config.logo ? `<img src="${config.logo}" style="max-height:60px; margin-bottom:5px;"><br>` : ''}
+                    <h2 style="margin:0; font-size:16px;">${config.nombreLocal.toUpperCase()}</h2>
+                    <p style="margin:2px 0;">RTN: ${config.rtn || '---'}</p>
+                    <p style="margin:2px 0;">TEL: ${config.telefono || '---'}</p>
                 </div>
                 <div style="font-size:11px; margin-bottom:10px;">
                     <p style="margin:2px 0;"><b>Cliente:</b> ${ultimaVenta.cliente}</p>
@@ -340,7 +270,11 @@
                     <p style="margin:2px 0;"><b>Tipo:</b> ${ultimaVenta.metodo.toUpperCase()}</p>
                 </div>
                 <div style="border-bottom:1px dashed #000; padding-bottom:5px; margin-bottom:5px;">
-                    ${itemsHtml}
+                    ${ultimaVenta.productos.map(i => `
+                        <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                            <span>${i.cantidad}x ${i.nombre.substring(0,18)}</span>
+                            <span>L.${(i.precio*i.cantidad).toFixed(2)}</span>
+                        </div>`).join('')}
                 </div>
                 <div style="text-align:right;">
                     <p style="margin:2px 0;">Subtotal: L. ${sub.toFixed(2)}</p>
@@ -348,13 +282,11 @@
                     <h3 style="margin:5px 0 0 0;">TOTAL: L. ${ultimaVenta.total.toFixed(2)}</h3>
                 </div>
                 <div style="text-align:center; margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
-                    <p style="margin:0; font-style:italic;">${config.mensaje}</p>
-                    <p style="font-size:9px; color:#666; margin-top:5px;">Digital Knowledge Solutions</p>
+                    <p style="margin:0; font-style:italic;">${config.eslogan}</p>
                 </div>`;
 
             html2pdf().from(element).set({
-                margin: 0, 
-                filename: `Ticket_${ultimaVenta.cliente}.pdf`,
+                margin: 0, filename: `Ticket_${ultimaVenta.cliente}.pdf`,
                 html2canvas: { scale: 2 },
                 jsPDF: { unit: 'mm', format: [80, 150], orientation: 'portrait' }
             }).save();
