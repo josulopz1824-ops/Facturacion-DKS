@@ -89,12 +89,15 @@
                         const color = data.estado === "abonado" ? "var(--warning)" : "var(--danger)";
                         const badge = data.esDeudaVieja ? `<small style="color:orange">[VIEJA]</small>` : '';
                         
+                        // Si productos es Array lo convertimos a texto para mostrar, si ya es texto lo dejamos
+                        const listaTexto = Array.isArray(data.productos) ? data.productos.join(', ') : data.productos;
+
                         contenedor.innerHTML += `
                             <div class="card-deuda" style="border-left: 5px solid ${color}">
                                 <div class="cliente-info">
                                     <h2>${data.cliente} ${badge}</h2>
                                     <div class="productos-lista">
-                                        ${data.productos.map(p => `<div>• ${p}</div>`).join('')}
+                                        • ${listaTexto}
                                     </div>
                                 </div>
                                 <div class="monto-total">L. ${parseFloat(data.total).toLocaleString()}</div>
@@ -112,41 +115,40 @@
             const { value: monto } = await Swal.fire({
                 title: `Abono: ${nombre}`,
                 input: 'number',
-                inputLabel: `Deuda: L. ${totalActual.toLocaleString()}`,
+                inputLabel: `Deuda actual: L. ${totalActual.toLocaleString()}`,
                 background: '#121212', color: '#fff', confirmButtonColor: 'var(--success)', showCancelButton: true
             });
 
             if (monto) {
                 const valorAbono = parseFloat(monto);
-                if (valorAbono > totalActual) return Swal.fire('Error', 'Abono excede la deuda', 'error');
+                if (valorAbono > totalActual) return Swal.fire('Error', 'El abono no puede ser mayor a la deuda', 'error');
 
                 await updateDoc(doc(db, "deudas", id), {
                     total: totalActual - valorAbono,
                     estado: (totalActual - valorAbono) <= 0 ? "pagado" : "abonado",
-                    ultimoAbono: valorAbono, // Esto alimenta la caja hoy
+                    ultimoAbono: valorAbono,
                     fecha: serverTimestamp() 
                 });
-                Swal.fire('✅ Recibido', `L. ${valorAbono.toLocaleString()} sumados a caja`, 'success');
+                Swal.fire('✅ Éxito', 'Abono registrado', 'success');
             }
         };
 
         window.mandarLiquidar = async (id, nombre, totalRestante) => {
             const res = await Swal.fire({
                 title: '¿Saldar cuenta?',
-                text: `¿Confirmas el pago total de L. ${totalRestante.toLocaleString()}?`,
+                text: `¿Se recibieron los L. ${totalRestante.toLocaleString()} de ${nombre}?`,
                 icon: 'warning', background: '#121212', color: '#fff',
                 showCancelButton: true, confirmButtonColor: 'var(--success)', confirmButtonText: 'SÍ, PAGADO'
             });
 
             if (res.isConfirmed) {
-                // EXPLICACIÓN: Guardamos totalRestante en ultimoAbono para que el reporte lo sume hoy
                 await updateDoc(doc(db, "deudas", id), {
                     estado: "pagado",
                     ultimoAbono: totalRestante, 
                     total: 0,
-                    fecha: serverTimestamp() // Obligatorio para que salga en el reporte de HOY
+                    fecha: serverTimestamp()
                 });
-                Swal.fire('✅ Liquidado', 'Dinero registrado en el reporte diario.', 'success');
+                Swal.fire('✅ Liquidado', 'La cuenta ha sido saldada.', 'success');
             }
         };
 
@@ -187,9 +189,12 @@
             });
 
             if (isConfirmed && carritoTemporal.length > 0) {
+                // CORRECCIÓN: Convertimos el array de productos a una sola frase de texto
+                const textoProductos = carritoTemporal.map(p => `${p.cantidad}x ${p.nombre}`).join(', ');
+
                 await addDoc(collection(db, "deudas"), {
                     cliente: cliente.toUpperCase(),
-                    productos: carritoTemporal.map(p => `${p.cantidad}x ${p.nombre}`),
+                    productos: textoProductos, // <--- Guardamos como TEXTO, no como objeto
                     total: total,
                     totalOriginal: total, 
                     estado: "pendiente",
@@ -203,7 +208,7 @@
                         await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
                     }
                 }
-                Swal.fire('✅ Registrado', 'Deuda guardada correctamente', 'success');
+                Swal.fire('✅ Registrado', 'Deuda guardada', 'success');
             }
         }
 
