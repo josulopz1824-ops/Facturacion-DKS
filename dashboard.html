@@ -68,11 +68,8 @@
             box-shadow: 0 10px 20px rgba(212, 175, 55, 0.1);
         }
 
-        /* Estilo especial para la tarjeta de Configuración (Admin) */
-        .admin-only-card {
-            border: 1px dashed #444;
-            background: linear-gradient(145deg, #121212, #0a0a0a);
-        }
+        /* Tarjetas de Admin ocultas por defecto por seguridad */
+        .admin-card { display: none; border: 1px dashed #444; background: linear-gradient(145deg, #121212, #0a0a0a); }
 
         .menu-card h3 { margin: 15px 0 5px 0; font-size: 1.1rem; }
         .menu-card p { font-size: 0.8rem; color: #666; margin: 0; }
@@ -102,85 +99,7 @@
         .footer-brand { color: var(--dorado); font-weight: bold; }
         .footer-clock { color: white; font-family: monospace; font-size: 1rem; border-left: 2px solid var(--dorado); padding-left: 15px; }
         .status-dot { width: 8px; height: 8px; background: #2ecc71; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #2ecc71; margin-right: 5px; }
-
-        #modalConfig { color: #333; }
-        .modal-body { background: white; padding: 30px; border-radius: 15px; width: 90%; max-width: 400px; text-align: center; box-shadow: 0 0 30px rgba(212,175,55,0.3); }
     </style>
-
-    <script type="module">
-    import { auth, db, verificarPermisos } from './auth-facturacion.js';
-    import { doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-    async function iniciarDashboard() {
-        try {
-            // 1. ESPERAMOS a que la función central nos diga quién es el usuario
-            const usuario = await verificarPermisos();
-            
-            if (!usuario) {
-                // Si no hay usuario, la función verificarPermisos ya redirige a login,
-                // pero por seguridad cortamos la ejecución aquí.
-                return;
-            }
-
-            // 2. ACTUALIZAMOS LA INTERFAZ (Ya es seguro porque tenemos los datos)
-            document.getElementById('nombreEmpresaFooter').innerText = usuario.empresa;
-
-            if (usuario.rol === "admin") {
-                console.log("🔥 Modo Administrador: Acceso total.");
-                document.getElementById("tarjeta-configuracion").style.display = "flex";
-                document.getElementById("tarjeta-reportes").style.display = "flex";
-                document.getElementById("tarjeta-diario").style.display = "flex";
-                document.getElementById("tarjeta-historial").style.display = "flex";
-            } else {
-                console.log("👤 Modo Cajero: Funciones restringidas.");
-                // Ocultamos tarjetas sensibles
-                ["tarjeta-reportes", "tarjeta-diario", "tarjeta-historial", "tarjeta-configuracion"].forEach(id => {
-                    document.getElementById(id).style.display = "none";
-                });
-            }
-
-            // 3. VERIFICAR CONFIGURACIÓN (Usamos la data que ya trajo verificarPermisos)
-            if (!usuario.configurado) {
-                document.getElementById('modalConfig').style.display = 'flex';
-            } else {
-                localStorage.setItem('dks_categorias', JSON.stringify(usuario.categorias));
-            }
-
-        } catch (error) {
-            console.error("Error al cargar el Dashboard:", error);
-        }
-    }
-
-    // Ejecutamos la función de inicio
-    iniciarDashboard();
-
-    // Función global para guardar configuración
-    window.guardarConfiguracion = async function() {
-        const checkboxes = document.querySelectorAll('.filtro-negocio:checked');
-        let elegidas = Array.from(checkboxes).map(cb => cb.value);
-
-        if (elegidas.length === 0) {
-            alert("Seleccione al menos un tipo de negocio.");
-            return;
-        }
-
-        const user = auth.currentUser;
-        if (user) {
-            try {
-                await updateDoc(doc(db, "users", user.uid), {
-                    categorias: elegidas,
-                    configurado: true
-                });
-                localStorage.setItem('dks_categorias', JSON.stringify(elegidas));
-                document.getElementById('modalConfig').style.display = 'none';
-                window.location.reload();
-            } catch (e) {
-                console.error("Error al guardar:", e);
-                alert("Error de permisos al guardar. Asegúrese de estar logueado.");
-            }
-        }
-    };
-</script>
 </head>
 <body>
 
@@ -197,8 +116,8 @@
                 <p>Cobros y facturas</p>
             </a>
 
-            <a href="inventario-ferretero.html" class="menu-card" id="tarjeta-inventario">
-                <span>🛠️</span>
+            <a href="inventario.html" class="menu-card" id="tarjeta-inventario">
+                <span>📦</span>
                 <h3>INVENTARIO</h3>
                 <p>Gestión de stock</p>
             </a>
@@ -209,28 +128,28 @@
                 <p>Cuentas por cobrar</p>
             </a>
 
-            <a href="configuracion.html" class="menu-card admin-only-card" id="tarjeta-configuracion" style="display: none;">
-                <span>⚙️</span>
-                <h3 style="color: var(--dorado);">CONFIGURACIÓN</h3>
-                <p>Datos del negocio y RTN</p>
-            </a>
-
-            <a href="reportes.html" class="menu-card" id="tarjeta-reportes">
+            <a href="reportes.html" class="menu-card admin-card" id="tarjeta-reportes">
                 <span>📊</span>
                 <h3>REPORTES</h3>
                 <p>Estado de caja</p>
             </a>
 
-            <a href="diario-ventas.html" class="menu-card" id="tarjeta-diario">
+            <a href="diario-ventas.html" class="menu-card admin-card" id="tarjeta-diario">
                 <span>📜</span>
                 <h3>DIARIO DE VENTAS</h3>
                 <p>Movimientos del día</p>
             </a>
 
-            <a href="historial.html" class="menu-card" id="tarjeta-historial">
+            <a href="historial.html" class="menu-card admin-card" id="tarjeta-historial">
                 <span>📂</span>
                 <h3>HISTORIAL</h3>
                 <p>Cierres antiguos</p>
+            </a>
+
+            <a href="configuracion.html" class="menu-card admin-card" id="tarjeta-configuracion">
+                <span>⚙️</span>
+                <h3 style="color: var(--dorado);">CONFIGURACIÓN</h3>
+                <p>Datos del negocio y RTN</p>
             </a>
         </div>
     </div>
@@ -248,27 +167,47 @@
         </div>
     </footer>
 
-    <div id="modalConfig" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:2000; align-items:center; justify-content:center;">
-        <div class="modal-body">
-            <h2>Personalice su DKS</h2>
-            <p style="font-size: 0.8rem; color: #666;">Seleccione el giro de su negocio</p>
-            <div style="text-align:left; margin:20px 0;">
-                <label><input type="checkbox" class="filtro-negocio" value="pulperia"> 🥤 Pulpería</label><br><br>
-                <label><input type="checkbox" class="filtro-negocio" value="tienda_ropa"> 👕 Tienda de Ropa</label><br><br>
-                <label><input type="checkbox" class="filtro-negocio" value="papeleria"> ✏️ Papelería</label>
-            </div>
-            <button onclick="guardarConfiguracion()" style="background:#d4af37; color:black; border:none; padding:15px; border-radius:8px; cursor:pointer; font-weight:bold; width:100%;">ACTIVAR SISTEMA</button>
-        </div>
-    </div>
+    <script type="module">
+        import { auth, db, verificarPermisos } from './auth-facturacion.js';
+
+        async function iniciarDashboard() {
+            try {
+                const usuario = await verificarPermisos();
+                if (!usuario) return;
+
+                // Nombre de la empresa
+                document.getElementById('nombreEmpresaFooter').innerText = usuario.nombreLocal || usuario.empresa;
+
+                // Si es ADMIN, mostramos las tarjetas privadas
+                if (usuario.rol === "admin") {
+                    console.log("🔥 Acceso Admin Detectado");
+                    const tarjetasAdmin = ["tarjeta-reportes", "tarjeta-diario", "tarjeta-historial", "tarjeta-configuracion"];
+                    tarjetasAdmin.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.style.display = "flex";
+                    });
+                } else {
+                    console.log("👤 Acceso Cajero: Manteniendo restricciones.");
+                }
+
+            } catch (error) {
+                console.error("Error crítico en Dashboard:", error);
+            }
+        }
+
+        iniciarDashboard();
+    </script>
 
     <script>
+        // Reloj en tiempo real
         function actualizarReloj() {
             const ahora = new Date();
-            document.getElementById('relojFooter').innerText = ahora.toLocaleTimeString() + " - " + ahora.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+            const opciones = { day: 'numeric', month: 'short' };
+            document.getElementById('relojFooter').innerText = 
+                ahora.toLocaleTimeString('es-HN') + " - " + ahora.toLocaleDateString('es-HN', opciones);
         }
         setInterval(actualizarReloj, 1000);
         actualizarReloj();
     </script>
 </body>
-
 </html>
