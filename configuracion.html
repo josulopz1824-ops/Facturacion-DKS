@@ -13,7 +13,29 @@
         .form-group { margin-bottom: 20px; }
         label { display: block; color: var(--dorado); margin-bottom: 8px; font-size: 0.9rem; }
         input, textarea { width: 100%; padding: 12px; background: #000; border: 1px solid #333; color: white; border-radius: 8px; box-sizing: border-box; }
-        .btn-save { background: var(--dorado); color: black; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .btn-save { background: var(--dorado); color: black; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; transition: 0.3s; }
+        .btn-save:hover { transform: scale(1.02); box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); }
+
+        /* Estilos para el cargador de Logo */
+        .logo-uploader {
+            text-align: center;
+            border: 2px dashed #333;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .logo-uploader:hover { border-color: var(--dorado); background: #1a1a1a; }
+        #imgPreview { 
+            max-width: 120px; 
+            max-height: 120px; 
+            border-radius: 50%; 
+            margin-bottom: 10px; 
+            display: none; 
+            border: 2px solid var(--dorado);
+            object-fit: cover;
+        }
     </style>
 </head>
 <body>
@@ -23,9 +45,18 @@
         <p style="color: #888; font-size: 0.85rem; margin-bottom: 30px;">Estos datos aparecerán impresos en sus comprobantes de venta.</p>
 
         <form id="configForm">
+            <div class="logo-uploader" onclick="document.getElementById('inputLogo').click()">
+                <img id="imgPreview" src="" alt="Logo Preview">
+                <div id="logoPlaceholder">
+                    <span style="font-size: 2rem; color: var(--dorado);">+</span>
+                    <p style="font-size: 0.8rem; color: #888;">Cargar Logo del Negocio<br>(PNG o JPG)</p>
+                </div>
+                <input type="file" id="inputLogo" accept="image/*" style="display: none;">
+            </div>
+
             <div class="form-group">
                 <label>Nombre Comercial</label>
-                <input type="text" id="confNombre" placeholder="Ej: Ferretería El Amigo">
+                <input type="text" id="confNombre" placeholder="Ej: DKS Hardware Centro">
             </div>
             <div class="form-group">
                 <label>RTN / Identificación Fiscal</label>
@@ -52,6 +83,28 @@
         import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let empresaID = "";
+        let logoBase64 = ""; // Variable para guardar el string de la imagen
+
+        // Lógica para procesar la imagen seleccionada
+        document.getElementById('inputLogo').onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    logoBase64 = event.target.result;
+                    mostrarPreview(logoBase64);
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        function mostrarPreview(src) {
+            const img = document.getElementById('imgPreview');
+            const placeholder = document.getElementById('logoPlaceholder');
+            img.src = src;
+            img.style.display = "inline-block";
+            placeholder.style.display = "none";
+        }
 
         async function cargarDatos() {
             const user = await verificarPermisos();
@@ -67,6 +120,11 @@
                     document.getElementById('confTel').value = d.telefono || "";
                     document.getElementById('confDir').value = d.direccion || "";
                     document.getElementById('confMsg').value = d.mensaje || "";
+                    
+                    if (d.logo) {
+                        logoBase64 = d.logo;
+                        mostrarPreview(d.logo);
+                    }
                 }
             }
         }
@@ -74,15 +132,17 @@
         document.getElementById('configForm').onsubmit = async (e) => {
             e.preventDefault();
             try {
+                // Mantenemos tus nombres de campos originales en Firebase
                 await setDoc(doc(db, "configuracion", empresaID), {
                     nombre: document.getElementById('confNombre').value,
                     rtn: document.getElementById('confRTN').value,
                     telefono: document.getElementById('confTel').value,
                     direccion: document.getElementById('confDir').value,
-                    mensaje: document.getElementById('confMsg').value
+                    mensaje: document.getElementById('confMsg').value,
+                    logo: logoBase64 // Añadimos el nuevo campo
                 }, { merge: true });
                 
-                Swal.fire('Éxito', 'Configuración actualizada correctamente', 'success');
+                Swal.fire('¡Éxito!', 'Configuración y logo actualizados correctamente', 'success');
             } catch (err) {
                 Swal.fire('Error', 'No se pudo guardar: ' + err.message, 'error');
             }
@@ -91,5 +151,4 @@
         cargarDatos();
     </script>
 </body>
-
 </html>
