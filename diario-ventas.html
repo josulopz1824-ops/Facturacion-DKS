@@ -21,7 +21,6 @@
         .cliente-nombre { color: var(--dorado); font-size: 1.1rem; font-weight: bold; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #000; }
         
-        /* Estilo para la tablita de productos */
         .tabla-productos { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.85rem; color: #ccc; }
         .tabla-productos th { text-align: left; color: var(--dorado); border-bottom: 1px solid #333; padding-bottom: 5px; }
         .tabla-productos td { padding: 4px 0; border-bottom: 1px solid #222; }
@@ -107,7 +106,6 @@
                 const estado = (v.estado || "").toLowerCase().trim();
                 let clase = "", color = "var(--success)", txt = "EFECTIVO", htmlExtra = "";
 
-                // Lógica de totales
                 if (estado === "pendiente") {
                     clase = "card-pendiente"; color = "var(--danger)"; txt = "FIADO";
                     tFiado += Number(v.total || 0);
@@ -126,9 +124,11 @@
                     tContado += Number(v.total || 0);
                 }
 
-                // Lógica para listar productos
+                // LÓGICA DE PRODUCTOS CORREGIDA (Híbrida para Ventas y Deudas)
                 let htmlProductos = "";
                 if (v.productos && Array.isArray(v.productos) && v.productos.length > 0) {
+                    const esFormatoObjeto = typeof v.productos[0] === 'object';
+                    
                     htmlProductos = `
                         <table class="tabla-productos">
                             <thead>
@@ -139,13 +139,27 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${v.productos.map(p => `
-                                    <tr>
-                                        <td>${p.cantidad} ${p.medida || ''}</td>
-                                        <td>${p.nombre}</td>
-                                        <td style="text-align:right">L. ${Number(p.precio).toFixed(2)}</td>
-                                    </tr>
-                                `).join('')}
+                                ${v.productos.map(p => {
+                                    if (esFormatoObjeto) {
+                                        return `
+                                            <tr>
+                                                <td>${p.cantidad} ${p.medida || ''}</td>
+                                                <td>${p.nombre}</td>
+                                                <td style="text-align:right">L. ${Number(p.precio || 0).toFixed(2)}</td>
+                                            </tr>`;
+                                    } else {
+                                        // Para el formato de texto "1x Mouse"
+                                        const partes = p.split('x ');
+                                        const cant = partes.length > 1 ? partes[0] : '1';
+                                        const nom = partes.length > 1 ? partes[1] : partes[0];
+                                        return `
+                                            <tr>
+                                                <td>${cant}</td>
+                                                <td>${nom}</td>
+                                                <td style="text-align:right">---</td>
+                                            </tr>`;
+                                    }
+                                }).join('')}
                             </tbody>
                         </table>
                     `;
