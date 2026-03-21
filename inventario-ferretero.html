@@ -18,7 +18,10 @@
         }
         .btn-home:hover { background: #d4af37; color: black; transform: scale(1.05); }
 
+        /* Contenedor dinámico según el rol */
         .grid-layout { display: grid; grid-template-columns: 350px 1fr; gap: 20px; margin-top: 60px; }
+        .grid-layout.modo-cajero { grid-template-columns: 1fr; } /* El inventario ocupa todo si no hay panel de edición */
+
         .editor-panel { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid #222; height: fit-content; position: sticky; top: 20px; }
         .inventory-panel { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid #222; }
         
@@ -36,8 +39,10 @@
         .btn-delete { background: none; border: 1px solid var(--danger); color: var(--danger); font-size: 0.7rem; width: auto; padding: 5px 10px; cursor: pointer; }
         .btn-edit { background: none; border: 1px solid var(--dorado); color: var(--dorado); font-size: 0.7rem; width: auto; padding: 5px 10px; margin-right: 5px; cursor: pointer; }
 
-        .badge-medida { background: #333; color: var(--dorado); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 5px; text-transform: uppercase; }
+        /* OCULTAR ACCIONES SI ES CAJERO */
+        .cajero-ocultar { display: none !important; }
 
+        .badge-medida { background: #333; color: var(--dorado); padding: 2px 6px; border-radius: 4px; font-size: 0.7rem; margin-left: 5px; text-transform: uppercase; }
         .divider { border-top: 1px solid #333; margin: 25px 0; position: relative; }
         .divider span { position: absolute; top: -12px; left: 20px; background: var(--card); padding: 0 10px; color: #666; font-size: 0.7rem; font-weight: bold; }
 
@@ -49,8 +54,8 @@
 
     <h1 style="margin-bottom: 10px; text-align: center;">DKS <span style="color:var(--dorado)">HARDWARE</span> CONTROL</h1>
 
-    <div class="grid-layout">
-        <div class="editor-panel">
+    <div class="grid-layout" id="mainLayout">
+        <div class="editor-panel" id="panelEdicion">
             <h3 id="formTitle">Nuevo Producto</h3>
             <input type="hidden" id="prodId"> 
             <input type="text" id="nombre" placeholder="Nombre (ej. Tubo PVC)">
@@ -92,7 +97,7 @@
                         <th>CATEGORÍA</th>
                         <th>STOCK</th>
                         <th>PRECIO</th>
-                        <th>ACCIONES</th>
+                        <th id="columnaAcciones">ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody id="tablaDocs"></tbody>
@@ -106,12 +111,24 @@
         from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let empresaActual = "";
+        let rolUsuario = "cajero"; // Por defecto restringido
 
         async function iniciar() {
             const usuario = await verificarPermisos();
             if (usuario) {
                 empresaActual = usuario.empresa;
+                rolUsuario = usuario.rol || "cajero"; 
+                
                 document.getElementById('nombreEmpresa').innerText = usuario.nombreLocal || empresaActual;
+
+                // APLICAR BLINDAJE SEGÚN ROL
+                if (rolUsuario !== "admin") {
+                    console.log("👤 Modo Cajero: Ocultando herramientas de edición.");
+                    document.getElementById('panelEdicion').style.display = "none";
+                    document.getElementById('columnaAcciones').style.display = "none";
+                    document.getElementById('mainLayout').classList.add('modo-cajero');
+                }
+
                 cargarInventarioCompartido(empresaActual);
             }
         }
@@ -126,13 +143,21 @@
                 const selectEntrada = document.getElementById('selectProductoEntrada');
                 
                 tbody.innerHTML = "";
-                selectEntrada.innerHTML = '<option value="">Seleccione producto...</option>';
+                if(selectEntrada) selectEntrada.innerHTML = '<option value="">Seleccione producto...</option>';
 
                 snapshot.forEach((d) => {
                     const p = d.data();
                     const isLow = p.stock <= p.min;
                     const medidaTexto = p.medida || "unidad";
                     
+                    // Solo generamos los botones de acción si es ADMIN
+                    const botonesAccion = rolUsuario === "admin" ? `
+                        <td>
+                            <button onclick="prepararEdicion('${d.id}', '${p.nombre}', '${p.categoria}', ${p.stock}, ${p.min}, ${p.precio}, '${medidaTexto}')" class="btn-edit">EDITAR</button>
+                            <button onclick="eliminarProducto('${d.id}')" class="btn-delete">BORRAR</button>
+                        </td>
+                    ` : "";
+
                     tbody.innerHTML += `
                         <tr class="${isLow ? 'low-stock' : ''}">
                             <td><b>${p.nombre}</b> ${isLow ? '⚠️' : ''}</td>
@@ -141,19 +166,19 @@
                                 ${p.stock} <span class="badge-medida">${medidaTexto}</span>
                             </td>
                             <td>L. ${p.precio.toFixed(2)}</td>
-                            <td>
-                                <button onclick="prepararEdicion('${d.id}', '${p.nombre}', '${p.categoria}', ${p.stock}, ${p.min}, ${p.precio}, '${medidaTexto}')" class="btn-edit">EDITAR</button>
-                                <button onclick="eliminarProducto('${d.id}')" class="btn-delete">BORRAR</button>
-                            </td>
+                            ${botonesAccion}
                         </tr>
                     `;
 
-                    selectEntrada.innerHTML += `<option value="${d.id}">${p.nombre} (${p.stock} ${medidaTexto})</option>`;
+                    if(selectEntrada) selectEntrada.innerHTML += `<option value="${d.id}">${p.nombre} (${p.stock} ${medidaTexto})</option>`;
                 });
             });
         }
 
+        // LAS FUNCIONES DE ESCRITURA SE MANTIENEN IGUAL PERO YA NO SON ACCESIBLES DESDE LA UI SI ES CAJERO
         document.getElementById('btnGuardar').onclick = async () => {
+            if(rolUsuario !== "admin") return;
+            // ... (resto del código de guardado igual)
             const id = document.getElementById('prodId').value;
             const data = {
                 nombre: document.getElementById('nombre').value.toUpperCase(),
@@ -183,6 +208,7 @@
         };
 
         document.getElementById('btnSumarStock').onclick = async () => {
+            if(rolUsuario !== "admin") return;
             const id = document.getElementById('selectProductoEntrada').value;
             const cantidad = parseFloat(document.getElementById('cantidadEntrada').value);
 
@@ -192,7 +218,6 @@
 
             try {
                 await updateDoc(doc(db, "productos", id), { stock: increment(cantidad) });
-                
                 await addDoc(collection(db, "movimientos_inventario"), {
                     productoId: id,
                     tipo: "ENTRADA",
@@ -200,7 +225,6 @@
                     fecha: serverTimestamp(),
                     empresa: empresaActual
                 });
-
                 Swal.fire('Stock Actualizado', `Se sumaron ${cantidad} al inventario.`, 'success');
                 document.getElementById('cantidadEntrada').value = "";
                 document.getElementById('selectProductoEntrada').value = "";
@@ -210,6 +234,7 @@
         };
 
         window.eliminarProducto = async (id) => {
+            if(rolUsuario !== "admin") return;
             const result = await Swal.fire({
                 title: '¿Eliminar?',
                 text: "No podrás recuperar este producto",
@@ -222,6 +247,7 @@
         };
 
         window.prepararEdicion = (id, nombre, cat, stock, min, precio, med) => {
+            if(rolUsuario !== "admin") return;
             document.getElementById('prodId').value = id;
             document.getElementById('nombre').value = nombre;
             document.getElementById('categoria').value = cat;
