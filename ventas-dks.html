@@ -195,8 +195,9 @@
             if (nombreInput === undefined) return;
             let cliente = nombreInput.trim() === "" ? "Consumidor Final" : nombreInput;
 
+            // --- LÓGICA DE ALERTA DE DEUDOR ---
             if (cliente !== "Consumidor Final") {
-                const qDeuda = query(collection(db, "deudas"), where("empresa", "==", empresaActual), where("cliente", "==", cliente));
+                const qDeuda = query(collection(db, "deudas"), where("empresa", "==", empresaActual), where("cliente", "==", cliente.toUpperCase()));
                 const snapshotDeuda = await getDocs(qDeuda);
                 let saldoPendiente = 0;
                 snapshotDeuda.forEach(doc => {
@@ -213,6 +214,47 @@
                     if (!checkDeuda.isConfirmed) return;
                 }
             }
+
+            const totalFinal = parseFloat(document.getElementById('totalVenta').innerText);
+            
+            // --- CORRECCIÓN 1: Convertir carrito a TEXTO para el reporte ---
+            const productosTexto = carrito.map(item => `${item.cantidad}x ${item.nombre}`).join(', ');
+
+            try {
+                const ventaData = {
+                    cliente: cliente.toUpperCase(), 
+                    productos: productosTexto, // <--- Ahora es texto plano, no más [object Object]
+                    total: totalFinal,
+                    totalOriginal: totalFinal, // CORRECCIÓN 2: Guardamos el original para el reporte
+                    empresa: empresaActual, 
+                    vendedor: user.uid, 
+                    metodo: tipo === "credito" ? "Crédito" : "Efectivo",
+                    estado: tipo === "credito" ? "pendiente" : "pagado",
+                    ultimoAbono: tipo === "credito" ? 0 : totalFinal, // CORRECCIÓN 3: Si paga hoy, entra a caja
+                    isvAplicado: document.getElementById('checkISV').checked ? document.getElementById('taxPercent').value : 0,
+                    fecha: serverTimestamp()
+                };
+
+                // Guardar en la colección correspondiente
+                await addDoc(collection(db, tipo === "credito" ? "deudas" : "ventas"), ventaData);
+
+                // Actualizar inventario
+                for(const item of carrito) {
+                    await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
+                }
+
+                // Para el PDF usamos una copia con el array original para que no falle el .map de la factura
+                ultimaVenta = { ...ventaData, productos: [...carrito], fecha: new Date() };
+                
+                await Swal.fire('✅ LISTO', 'Transacción completada', 'success');
+                await window.generarFacturaPDF(); 
+                carrito = [];
+                window.actualizarTicket();
+            } catch (e) { 
+                console.error(e);
+                Swal.fire('Error', e.message, 'error'); 
+            }
+        }
 
             const totalFinal = parseFloat(document.getElementById('totalVenta').innerText);
             try {
