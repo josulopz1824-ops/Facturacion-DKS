@@ -38,7 +38,6 @@
         .btn-cobrar { background: var(--success); color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; flex: 1; }
         .btn-abonar { background: var(--warning); color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; flex: 1; }
 
-        /* Estilos Carrito SweetAlert */
         .cart-container { max-height: 200px; overflow-y: auto; border: 1px solid #333; background: #000; padding: 10px; margin: 10px 0; border-radius: 5px; }
         .cart-item { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 5px 0; border-bottom: 1px dashed #444; }
         .btn-del { color: var(--danger); background: none; border: none; cursor: pointer; font-weight: bold; }
@@ -109,47 +108,48 @@
             });
         }
 
-        // --- FUNCIONES GLOBALES CONECTADAS A WINDOW ---
-        window.mandarAbono = async (id, nombre, total) => {
+        window.mandarAbono = async (id, nombre, totalActual) => {
             const { value: monto } = await Swal.fire({
                 title: `Abono: ${nombre}`,
                 input: 'number',
-                inputLabel: `Saldo actual: L. ${total.toLocaleString()}`,
+                inputLabel: `Deuda: L. ${totalActual.toLocaleString()}`,
                 background: '#121212', color: '#fff', confirmButtonColor: 'var(--success)', showCancelButton: true
             });
 
-            if (monto && parseFloat(monto) <= total) {
-                const valor = parseFloat(monto);
+            if (monto) {
+                const valorAbono = parseFloat(monto);
+                if (valorAbono > totalActual) return Swal.fire('Error', 'Abono excede la deuda', 'error');
+
                 await updateDoc(doc(db, "deudas", id), {
-                    total: total - valor,
-                    estado: (total - valor) <= 0 ? "pagado" : "abonado",
-                    ultimoAbono: valor,
-                    fecha: serverTimestamp() // Sincroniza con el reporte de hoy
+                    total: totalActual - valorAbono,
+                    estado: (totalActual - valorAbono) <= 0 ? "pagado" : "abonado",
+                    ultimoAbono: valorAbono, // Esto alimenta la caja hoy
+                    fecha: serverTimestamp() 
                 });
-                Swal.fire('Éxito', 'Abono registrado', 'success');
+                Swal.fire('✅ Recibido', `L. ${valorAbono.toLocaleString()} sumados a caja`, 'success');
             }
         };
 
-        window.mandarLiquidar = async (id, nombre, total) => {
+        window.mandarLiquidar = async (id, nombre, totalRestante) => {
             const res = await Swal.fire({
                 title: '¿Saldar cuenta?',
-                text: `${nombre} pagó L. ${total.toLocaleString()}`,
+                text: `¿Confirmas el pago total de L. ${totalRestante.toLocaleString()}?`,
                 icon: 'warning', background: '#121212', color: '#fff',
                 showCancelButton: true, confirmButtonColor: 'var(--success)', confirmButtonText: 'SÍ, PAGADO'
             });
 
             if (res.isConfirmed) {
+                // EXPLICACIÓN: Guardamos totalRestante en ultimoAbono para que el reporte lo sume hoy
                 await updateDoc(doc(db, "deudas", id), {
                     estado: "pagado",
-                    ultimoAbono: total,
+                    ultimoAbono: totalRestante, 
                     total: 0,
-                    fecha: serverTimestamp()
+                    fecha: serverTimestamp() // Obligatorio para que salga en el reporte de HOY
                 });
-                Swal.fire('Pagado', 'Cuenta cerrada', 'success');
+                Swal.fire('✅ Liquidado', 'Dinero registrado en el reporte diario.', 'success');
             }
         };
 
-        // --- LÓGICA DEL CARRITO ---
         document.getElementById('btnNuevoFiado').onclick = async () => {
             carritoTemporal = [];
             const { value: cliente } = await Swal.fire({
@@ -191,7 +191,7 @@
                     cliente: cliente.toUpperCase(),
                     productos: carritoTemporal.map(p => `${p.cantidad}x ${p.nombre}`),
                     total: total,
-                    totalOriginal: total, // <--- CLAVE PARA EL REPORTE
+                    totalOriginal: total, 
                     estado: "pendiente",
                     esDeudaVieja: result.vieja,
                     empresa: empresaActual,
@@ -203,7 +203,7 @@
                         await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
                     }
                 }
-                Swal.fire('Registrado', '', 'success');
+                Swal.fire('✅ Registrado', 'Deuda guardada correctamente', 'success');
             }
         }
 
