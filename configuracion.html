@@ -1,11 +1,91 @@
-<script type="module">
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración | DKS-Hardware</title>
+    <link rel="stylesheet" href="global-styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        :root { --dorado: #d4af37; --bg: #0a0a0a; --card: #151515; }
+        body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; padding: 40px; }
+        .config-container { max-width: 600px; margin: 0 auto; background: var(--card); padding: 30px; border-radius: 15px; border: 1px solid #222; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; color: var(--dorado); margin-bottom: 8px; font-size: 0.9rem; }
+        input, textarea { width: 100%; padding: 12px; background: #000; border: 1px solid #333; color: white; border-radius: 8px; box-sizing: border-box; }
+        .btn-save { background: var(--dorado); color: black; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 20px; transition: 0.3s; }
+        .btn-save:hover { transform: scale(1.02); box-shadow: 0 0 15px rgba(212, 175, 55, 0.3); }
+
+        /* Estilos para el cargador de Logo */
+        .logo-uploader {
+            text-align: center;
+            border: 2px dashed #333;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .logo-uploader:hover { border-color: var(--dorado); background: #1a1a1a; }
+        #imgPreview { 
+            max-width: 120px; 
+            max-height: 120px; 
+            border-radius: 50%; 
+            margin-bottom: 10px; 
+            display: none; 
+            border: 2px solid var(--dorado);
+            object-fit: cover;
+        }
+    </style>
+</head>
+<body>
+    <div class="config-container">
+        <a href="dashboard.html" style="color: #666; text-decoration: none; font-size: 0.8rem;">← Volver al Dashboard</a>
+        <h1 style="margin-top: 10px;">Configuración del <span style="color: var(--dorado);">Negocio</span></h1>
+        <p style="color: #888; font-size: 0.85rem; margin-bottom: 30px;">Estos datos aparecerán impresos en sus comprobantes de venta.</p>
+
+        <form id="configForm">
+            <div class="logo-uploader" onclick="document.getElementById('inputLogo').click()">
+                <img id="imgPreview" src="" alt="Logo Preview">
+                <div id="logoPlaceholder">
+                    <span style="font-size: 2rem; color: var(--dorado);">+</span>
+                    <p style="font-size: 0.8rem; color: #888;">Cargar Logo del Negocio<br>(PNG o JPG)</p>
+                </div>
+                <input type="file" id="inputLogo" accept="image/*" style="display: none;">
+            </div>
+
+            <div class="form-group">
+                <label>Nombre Comercial</label>
+                <input type="text" id="confNombre" placeholder="Ej: DKS Hardware Centro">
+            </div>
+            <div class="form-group">
+                <label>RTN / Identificación Fiscal</label>
+                <input type="text" id="confRTN" placeholder="0000-0000-000000">
+            </div>
+            <div class="form-group">
+                <label>Teléfono de Contacto</label>
+                <input type="text" id="confTel" placeholder="+504 0000-0000">
+            </div>
+            <div class="form-group">
+                <label>Dirección Física</label>
+                <textarea id="confDir" rows="2" placeholder="Barrio El Centro..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Mensaje al pie del Ticket</label>
+                <input type="text" id="confMsg" placeholder="¡Gracias por su compra!">
+            </div>
+            <button type="submit" class="btn-save">GUARDAR CAMBIOS</button>
+        </form>
+    </div>
+
+    <script type="module">
         import { db, verificarPermisos } from './auth-facturacion.js';
         import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let empresaID = "";
-        let logoBase64 = "";
+        let logoBase64 = ""; // Variable para guardar el string de la imagen
 
-        // Lógica para procesar la imagen (Se mantiene igual)
+        // Lógica para procesar la imagen seleccionada
         document.getElementById('inputLogo').onchange = (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -28,11 +108,12 @@
 
         async function cargarDatos() {
             const user = await verificarPermisos();
-            // BLOQUEO DE SEGURIDAD: Si no hay empresaID, no carga nada
+            
+            // SEGURIDAD: Solo procedemos si el usuario tiene una empresa asignada
             if(user && user.empresa) {
                 empresaID = user.empresa;
                 
-                // Apuntamos específicamente al documento que tiene el nombre del ID de la empresa
+                // Apuntamos al documento ÚNICO de esta empresa
                 const docRef = doc(db, "configuracion", empresaID);
                 const snap = await getDoc(docRef);
                 
@@ -50,40 +131,49 @@
                     }
                 }
             } else {
-                Swal.fire('Error', 'No se detectó una empresa vinculada a tu cuenta', 'error');
+                Swal.fire({
+                    title: 'Error de Acceso',
+                    text: 'No se encontró un ID de empresa vinculado a tu perfil.',
+                    icon: 'error',
+                    confirmButtonColor: '#d4af37'
+                });
             }
         }
 
         document.getElementById('configForm').onsubmit = async (e) => {
             e.preventDefault();
 
-            // DOBLE VERIFICACIÓN: Evita guardar si empresaID está vacío por error de carga
+            // VALIDACIÓN: Evita guardar si por algún motivo el ID de empresa no cargó
             if (!empresaID) {
-                return Swal.fire('Error', 'No hay ID de empresa válido. Recarga la página.', 'error');
+                return Swal.fire('Error', 'No se puede guardar: ID de empresa no identificado.', 'error');
             }
 
             try {
-                // setDoc con ID de empresa garantiza que SOLO se actualice el dato de esa empresa
-                const docRef = doc(db, "configuracion", empresaID);
-                
-                const nuevosDatos = {
+                // Guardamos usando el empresaID como llave única
+                // El uso de { merge: true } es vital para no borrar otros campos si existieran
+                await setDoc(doc(db, "configuracion", empresaID), {
                     nombre: document.getElementById('confNombre').value.trim(),
                     rtn: document.getElementById('confRTN').value.trim(),
                     telefono: document.getElementById('confTel').value.trim(),
                     direccion: document.getElementById('confDir').value.trim(),
                     mensaje: document.getElementById('confMsg').value.trim(),
                     logo: logoBase64,
-                    ultimaActualizacion: new Date() // Opcional: para control interno
-                };
-
-                await setDoc(docRef, nuevosDatos, { merge: true });
+                    idEmpresa: empresaID // Guardamos el ID dentro por redundancia
+                }, { merge: true });
                 
-                Swal.fire('¡Éxito!', 'Los datos de tu empresa se actualizaron correctamente', 'success');
+                Swal.fire({
+                    title: '¡Guardado!',
+                    text: 'La configuración de tu negocio se actualizó correctamente.',
+                    icon: 'success',
+                    confirmButtonColor: '#d4af37'
+                });
             } catch (err) {
                 console.error("Error al guardar:", err);
-                Swal.fire('Error', 'No se pudo guardar: ' + err.message, 'error');
+                Swal.fire('Error', 'Hubo un problema al guardar los datos: ' + err.message, 'error');
             }
         };
 
         cargarDatos();
     </script>
+</body>
+</html>
