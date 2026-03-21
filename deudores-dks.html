@@ -16,14 +16,12 @@
             display: flex; align-items: center; gap: 10px; font-weight: bold; font-size: 0.9rem;
             transition: 0.3s; z-index: 9999; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        .btn-home:hover { background: #d4af37; color: black; transform: scale(1.05); }
 
-        /* Botón para Nuevo Deudor */
         .btn-nuevo {
             position: fixed; bottom: 30px; right: 30px; background: var(--dorado); color: black;
             padding: 15px 25px; border-radius: 50px; font-weight: bold; cursor: pointer;
             box-shadow: 0 10px 20px rgba(212, 175, 55, 0.3); border: none; transition: 0.3s;
-            display: flex; align-items: center; gap: 10px; z-index: 999;
+            z-index: 999; font-size: 1rem;
         }
         .btn-nuevo:hover { transform: scale(1.1); filter: brightness(1.2); }
 
@@ -37,190 +35,194 @@
         }
 
         .cliente-info h2 { margin: 0; color: var(--dorado); font-size: 1.4rem; }
-        .productos-lista { color: #888; font-size: 0.9rem; margin: 10px 0; }
-        .monto-total { font-size: 1.8rem; font-weight: bold; margin: 10px 0; }
+        .productos-lista { color: #888; font-size: 0.9rem; margin: 10px 0; min-height: 40px; }
+        .monto-total { font-size: 1.8rem; font-weight: bold; margin: 10px 0; color: #fff; }
         
         .btn-group { display: flex; gap: 10px; margin-top: 10px; }
-        .btn-cobrar { background: var(--success); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; transition: 0.3s; }
-        .btn-abonar { background: var(--warning); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; transition: 0.3s; }
-        .btn-cobrar:hover, .btn-abonar:hover { transform: translateY(-2px); filter: brightness(1.1); }
+        .btn-cobrar { background: var(--success); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; }
+        .btn-abonar { background: var(--warning); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; }
         
-        .swal2-popup { background: #121212 !important; color: white !important; border: 1px solid var(--dorado) !important; }
-        .swal2-input { color: white !important; }
+        /* Estilos para el formulario de SweetAlert */
+        .swal-custom-input { width: 80%; background: #222 !important; color: white !important; border: 1px solid #444 !important; border-radius: 5px !important; padding: 10px !important; margin: 10px 0 !important; }
+        .swal-custom-select { width: 85%; background: #222; color: white; border: 1px solid var(--dorado); padding: 10px; border-radius: 5px; margin: 10px 0; }
     </style>
 </head>
 <body>
 
     <a href="dashboard.html" class="btn-home"><span>DASHBOARD</span></a>
 
-    <button class="btn-nuevo" onclick="mostrarFormularioNuevoDeudor()">
-        <span>+</span> NUEVO DEUDOR
+    <button class="btn-nuevo" id="btnAbrirFormulario">
+        + NUEVA DEUDA
     </button>
 
-    <h1>Cuentas por Cobrar: <span id="nombreEmpresaLabel" style="color:var(--dorado)">...</span></h1>
-    <p>Lista de clientes con saldo pendiente de la empresa.</p>
-
+    <h1>Cuentas por Cobrar: <span id="nombreEmpresaLabel" style="color:var(--dorado)">Cargando...</span></h1>
     <div class="grid-deudores" id="contenedorDeudores"></div>
 
     <script type="module">
-        import { db, auth, verificarPermisos } from './auth-facturacion.js';
-        import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { db, verificarPermisos } from './auth-facturacion.js';
+        import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let empresaActual = "";
+        let listaInventario = [];
 
         async function iniciarDeudores() {
             const userData = await verificarPermisos();
             if (userData) {
                 empresaActual = userData.empresa;
-                document.getElementById('nombreEmpresaLabel').innerText = userData.nombreLocal || "Mi Empresa";
-                inicializarEscuchaDeudas(empresaActual);
+                document.getElementById('nombreEmpresaLabel').innerText = userData.nombreLocal || userData.empresa;
+                
+                // 1. Cargar inventario para el selector
+                await cargarInventario();
+                // 2. Escuchar cambios en las deudas
+                inicializarEscuchaDeudas();
             }
         }
 
-        iniciarDeudores();
+        async function cargarInventario() {
+            try {
+                const q = query(collection(db, "inventario"), where("empresa", "==", empresaActual));
+                const snap = await getDocs(q);
+                listaInventario = [];
+                snap.forEach(d => {
+                    const item = d.data();
+                    listaInventario.push({ 
+                        nombre: item.nombre, 
+                        precio: parseFloat(item.precioVenta || 0) 
+                    });
+                });
+                console.log("📦 Inventario cargado:", listaInventario.length, "productos.");
+            } catch (e) {
+                console.error("Error cargando inventario:", e);
+            }
+        }
 
-        function inicializarEscuchaDeudas(empID) {
-            const q = query(collection(db, "deudas"), where("empresa", "==", empID));
-
+        function inicializarEscuchaDeudas() {
+            const q = query(collection(db, "deudas"), where("empresa", "==", empresaActual));
             onSnapshot(q, (snapshot) => {
                 const contenedor = document.getElementById('contenedorDeudores');
                 contenedor.innerHTML = ""; 
-                let hayPendientes = false;
+                let hayDeudas = false;
 
                 snapshot.forEach((documento) => {
                     const data = documento.data();
-                    const id = documento.id;
-
                     if (data.estado !== "pagado") {
-                        hayPendientes = true;
+                        hayDeudas = true;
+                        const id = documento.id;
                         const colorBorde = data.estado === "abonado" ? "var(--warning)" : "var(--danger)";
-                        const etiquetaAbono = data.estado === "abonado" ? `<span style="color:var(--warning); font-size:0.8rem;"> (CON ABONOS)</span>` : "";
-
+                        
                         contenedor.innerHTML += `
                             <div class="card-deuda" style="border-left: 5px solid ${colorBorde}">
                                 <div class="cliente-info">
-                                    <h2>${data.cliente}${etiquetaAbono}</h2>
+                                    <h2>${data.cliente}</h2>
                                     <div class="productos-lista">
-                                        <b>Detalle:</b> ${data.productos ? data.productos.join(", ") : "Varios / Manual"}
+                                        <b>Detalle:</b> ${Array.isArray(data.productos) ? data.productos.join(", ") : data.productos}
                                     </div>
                                 </div>
                                 <div>
                                     <div class="monto-total">L. ${parseFloat(data.total).toFixed(2)}</div>
                                     <div class="btn-group">
-                                        <button class="btn-abonar" onclick="abonarDeuda('${id}', '${data.cliente}', ${data.total})">
-                                            ABONAR
-                                        </button>
-                                        <button class="btn-cobrar" onclick="liquidarDeuda('${id}', '${data.cliente}')">
-                                            SALDAR TOTAL
-                                        </button>
+                                        <button class="btn-abonar" onclick="window.abonarDeuda('${id}', '${data.cliente}', ${data.total})">ABONAR</button>
+                                        <button class="btn-cobrar" onclick="window.liquidarDeuda('${id}', '${data.cliente}')">SALDAR</button>
                                     </div>
                                 </div>
-                            </div>
-                        `;
+                            </div>`;
                     }
                 });
-
-                if (!hayPendientes) {
-                    contenedor.innerHTML = "<p style='color:#555'>No hay cuentas pendientes en la empresa.</p>";
-                }
+                if (!hayDeudas) contenedor.innerHTML = "<p>No hay cuentas pendientes.</p>";
             });
         }
 
-        // --- FUNCIÓN PARA CREAR NUEVO DEUDOR ---
-        window.mostrarFormularioNuevoDeudor = async () => {
+        // --- BOTÓN NUEVA DEUDA ---
+        document.getElementById('btnAbrirFormulario').onclick = async () => {
+            if (listaInventario.length === 0) await cargarInventario();
+
+            let opcionesHtml = listaInventario.map(p => 
+                `<option value="${p.precio}|${p.nombre}">${p.nombre} (L. ${p.precio})</option>`
+            ).join('');
+
             const { value: formValues } = await Swal.fire({
-                title: 'Registrar Deuda Manual',
-                html:
-                    '<input id="swal-input1" class="swal2-input" placeholder="Nombre del Cliente">' +
-                    '<input id="swal-input2" class="swal2-input" placeholder="¿Qué se llevó? (Ej: Saco Fertilizante)">' +
-                    '<input id="swal-input3" class="swal2-input" type="number" placeholder="Monto Total L.">',
-                focusConfirm: false,
+                title: 'Registrar Deuda',
+                background: '#121212',
+                color: '#fff',
+                html: `
+                    <input id="swal-nombre" class="swal-custom-input" placeholder="Nombre del Cliente">
+                    <select id="swal-prod" class="swal-custom-select">
+                        <option value="">-- Seleccione Producto --</option>
+                        ${opcionesHtml}
+                    </select>
+                    <input id="swal-cant" type="number" class="swal-custom-input" placeholder="Cantidad" value="1">
+                `,
                 showCancelButton: true,
                 confirmButtonText: 'Guardar Deuda',
                 confirmButtonColor: 'var(--dorado)',
                 preConfirm: () => {
-                    return [
-                        document.getElementById('swal-input1').value.toUpperCase(),
-                        document.getElementById('swal-input2').value,
-                        document.getElementById('swal-input3').value
-                    ]
+                    const nombre = document.getElementById('swal-nombre').value;
+                    const prodRaw = document.getElementById('swal-prod').value;
+                    const cant = document.getElementById('swal-cant').value;
+                    if (!nombre || !prodRaw || !cant) {
+                        Swal.showValidationMessage('Todos los campos son obligatorios');
+                        return false;
+                    }
+                    const [precio, articulo] = prodRaw.split('|');
+                    return { nombre: nombre.toUpperCase(), precio: parseFloat(precio), articulo, cant: parseInt(cant) };
                 }
             });
 
             if (formValues) {
-                const [nombre, detalle, monto] = formValues;
-                if (!nombre || !monto) return Swal.fire('Error', 'Nombre y Monto son obligatorios', 'error');
-
+                const total = formValues.precio * formValues.cant;
                 try {
                     await addDoc(collection(db, "deudas"), {
-                        cliente: nombre,
-                        productos: [detalle || "Venta Manual"],
-                        total: parseFloat(monto),
+                        cliente: formValues.nombre,
+                        productos: [`${formValues.cant}x ${formValues.articulo}`],
+                        total: total,
                         estado: "pendiente",
                         empresa: empresaActual,
                         fecha: serverTimestamp()
                     });
-                    Swal.fire('✅ Éxito', 'Deuda registrada correctamente', 'success');
+                    Swal.fire('Guardado', 'Deuda registrada con éxito', 'success');
                 } catch (e) {
-                    Swal.fire('Error', 'No se pudo guardar: ' + e.message, 'error');
+                    Swal.fire('Error', 'No se pudo guardar', 'error');
                 }
             }
         };
 
-        // --- FUNCIONES DE ABONO Y LIQUIDACIÓN (Se mantienen igual) ---
+        // --- FUNCIONES GLOBALES (ACCESIBLES DESDE EL HTML) ---
         window.abonarDeuda = async (id, nombre, totalActual) => {
-            const { value: montoStr } = await Swal.fire({
-                title: `Abono de ${nombre}`,
+            const { value: monto } = await Swal.fire({
+                title: `Abonar a ${nombre}`,
                 input: 'number',
                 inputLabel: `Saldo actual: L. ${totalActual.toFixed(2)}`,
-                inputPlaceholder: 'Ingrese el monto a abonar',
                 showCancelButton: true,
-                confirmButtonColor: 'var(--warning)',
-                inputValidator: (value) => {
-                    if (!value || parseFloat(value) <= 0) return 'Ingrese un monto válido';
-                    if (parseFloat(value) > totalActual) return 'El abono no puede ser mayor a la deuda';
-                }
+                inputValidator: (v) => { if(!v || v <= 0 || v > totalActual) return 'Monto inválido'; }
             });
 
-            if (montoStr) {
-                const monto = parseFloat(montoStr);
-                try {
-                    const docRef = doc(db, "deudas", id);
-                    await updateDoc(docRef, {
-                        total: totalActual - monto,
-                        estado: "abonado",
-                        ultimoAbono: monto,
-                        fechaAbono: serverTimestamp()
-                    });
-                    Swal.fire('✅ ¡Abonado!', `Se restaron L. ${monto.toFixed(2)}`, 'success');
-                } catch (error) {
-                    Swal.fire('Error', error.message, 'error');
-                }
+            if (monto) {
+                const nuevoTotal = totalActual - parseFloat(monto);
+                await updateDoc(doc(db, "deudas", id), {
+                    total: nuevoTotal,
+                    estado: nuevoTotal <= 0 ? "pagado" : "abonado",
+                    ultimoAbono: parseFloat(monto),
+                    fechaAbono: serverTimestamp()
+                });
+                Swal.fire('Abonado', 'Saldo actualizado', 'success');
             }
         };
 
         window.liquidarDeuda = async (id, nombre) => {
-            const result = await Swal.fire({
-                title: '¿Saldar deuda?',
-                text: `¿Confirmas que ${nombre} pagó el total?`,
-                icon: 'question',
+            const confirm = await Swal.fire({
+                title: '¿Saldar cuenta?',
+                text: `¿${nombre} pagó el total?`,
+                icon: 'warning',
                 showCancelButton: true,
-                confirmButtonColor: 'var(--success)',
-                confirmButtonText: 'Sí, pagado'
+                confirmButtonColor: 'var(--success)'
             });
-
-            if (result.isConfirmed) {
-                try {
-                    await updateDoc(doc(db, "deudas", id), {
-                        estado: "pagado",
-                        fechaPago: serverTimestamp()
-                    });
-                    Swal.fire('✅ Pagado', 'Cuenta cerrada.', 'success');
-                } catch (error) {
-                    Swal.fire('Error', error.message, 'error');
-                }
+            if (confirm.isConfirmed) {
+                await updateDoc(doc(db, "deudas", id), { estado: "pagado", fechaPago: serverTimestamp() });
+                Swal.fire('Pagado', 'Cuenta cerrada', 'success');
             }
         };
+
+        iniciarDeudores();
     </script>
 </body>
 </html>
