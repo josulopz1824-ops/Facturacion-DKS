@@ -8,7 +8,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        :root { --dorado: #d4af37; --bg: #0a0a0a; --card: #151515; --success: #00c851; --danger: #ff4444; }
+        :root { --dorado: #d4af37; --bg: #0a0a0a; --card: #151515; --success: #00c851; --danger: #ff4444; --info: #007bff; }
         body { background: var(--bg); color: white; font-family: 'Segoe UI', sans-serif; display: grid; grid-template-columns: 1fr 400px; height: 100vh; margin: 0; }
         
         .btn-home {
@@ -77,6 +77,7 @@
             
             <button class="btn-pay" id="btnFinalizar">FINALIZAR (EFECTIVO)</button>
             <button class="btn-pay solo-admin" id="btnCredito" style="background: var(--dorado); color: black;">REGISTRAR FIADO (CRÉDITO)</button>
+            <button class="btn-pay" id="btnCotizacion" style="background: var(--info); color: white; margin-top: 5px;">📄 GENERAR COTIZACIÓN</button>
             <button class="btn-pay solo-admin" id="btnFactura" style="background: #333; color: white; margin-top: 5px;">🖨️ REIMPRIMIR ÚLTIMO</button>
         </div>
     </section>
@@ -240,14 +241,11 @@
 
         window.generarFacturaPDF = async () => {
             if(!ultimaVenta) return;
-            
-            // 1. CARGAMOS CONFIGURACIÓN (Mismos campos que en config.html)
             let config = { nombre: nombreLocalGlobal, rtn: "---", telefono: "---", mensaje: "¡Gracias por su compra!", logo: "", direccion: "" };
             try {
-                // Cambiado a colección "configuracion" para que coincida con tu otro script
                 const confSnap = await getDoc(doc(db, "configuracion", empresaActual));
                 if (confSnap.exists()) config = { ...config, ...confSnap.data() };
-            } catch (e) { console.log("Usando config por defecto"); }
+            } catch (e) { console.log("Error config"); }
 
             const element = document.createElement('div');
             element.style.width = "260px"; element.style.padding = "15px"; element.style.background = "white";
@@ -260,7 +258,6 @@
             element.innerHTML = `
                 <div style="text-align:center; border-bottom:1px dashed #000; padding-bottom:10px; margin-bottom:10px;">
                     ${config.logo ? `<img src="${config.logo}" style="max-height:70px; width:auto; margin-bottom:5px;"><br>` : ''}
-                    
                     <h2 style="margin:0; font-size:16px;">${(config.nombre || nombreLocalGlobal).toUpperCase()}</h2>
                     <p style="margin:2px 0;">RTN: ${config.rtn || '---'}</p>
                     <p style="margin:2px 0;">TEL: ${config.telefono || '---'}</p>
@@ -289,14 +286,75 @@
 
             html2pdf().from(element).set({
                 margin: 0, filename: `Ticket_${ultimaVenta.cliente}.pdf`,
-                html2canvas: { scale: 3 }, // Mayor escala para que el logo se vea nítido
+                html2canvas: { scale: 3 },
                 jsPDF: { unit: 'mm', format: [80, 150], orientation: 'portrait' }
             }).save();
+        };
+
+        window.generarCotizacion = async () => {
+            if(carrito.length === 0) return Swal.fire('Caja vacía', 'Agregue productos para cotizar', 'warning');
+            const { value: nombreCli } = await Swal.fire({
+                title: 'Cotizar para:', input: 'text', inputPlaceholder: 'Nombre del cliente', showCancelButton: true
+            });
+            if (nombreCli === undefined) return;
+
+            let config = { nombre: nombreLocalGlobal, rtn: "---", telefono: "---", mensaje: "Válido por 15 días", logo: "" };
+            try {
+                const confSnap = await getDoc(doc(db, "configuracion", empresaActual));
+                if (confSnap.exists()) config = { ...config, ...confSnap.data() };
+            } catch (e) {}
+
+            const element = document.createElement('div');
+            element.style.width = "260px"; element.style.padding = "15px"; element.style.background = "white";
+            element.style.color = "black"; element.style.fontFamily = "monospace";
+            
+            let subtotal = 0;
+            const pct = (parseFloat(document.getElementById('taxPercent').value) || 0) / 100;
+            const aplicarISV = document.getElementById('checkISV').checked;
+
+            const filas = carrito.map(i => {
+                subtotal += (i.precio * i.cantidad);
+                return `<div style="display:flex; justify-content:space-between; margin-bottom:3px;">
+                    <span>${i.cantidad}x ${i.nombre.substring(0,18)}</span>
+                    <span>L.${(i.precio*i.cantidad).toFixed(2)}</span>
+                </div>`;
+            }).join('');
+
+            const isv = aplicarISV ? (subtotal * pct) : 0;
+
+            element.innerHTML = `
+                <div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:10px;">
+                    ${config.logo ? `<img src="${config.logo}" style="max-height:60px;"><br>` : ''}
+                    <h2 style="margin:0; font-size:14px;">COTIZACIÓN DE VENTA</h2>
+                    <h1 style="margin:5px 0; font-size:16px;">${config.nombre.toUpperCase()}</h1>
+                </div>
+                <div style="font-size:11px; margin-bottom:10px;">
+                    <p style="margin:2px 0;"><b>Cliente:</b> ${nombreCli || 'Cliente Eventual'}</p>
+                    <p style="margin:2px 0;"><b>Fecha:</b> ${new Date().toLocaleString()}</p>
+                    <p style="margin:2px 0; color: red;"><b>* DOCUMENTO NO CONTABLE *</b></p>
+                </div>
+                <div style="border-bottom:1px dashed #000; padding-bottom:5px; margin-bottom:5px;">${filas}</div>
+                <div style="text-align:right;">
+                    <p style="margin:2px 0;">Subtotal: L. ${subtotal.toFixed(2)}</p>
+                    <p style="margin:2px 0;">ISV: L. ${isv.toFixed(2)}</p>
+                    <h3 style="margin:5px 0 0 0;">TOTAL: L. ${(subtotal + isv).toFixed(2)}</h3>
+                </div>
+                <div style="text-align:center; margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
+                    <p style="margin:0; font-size:10px;">Precios sujetos a cambios sin previo aviso.</p>
+                </div>`;
+
+            html2pdf().from(element).set({
+                margin: 0, filename: `Cotizacion_${nombreCli}.pdf`,
+                html2canvas: { scale: 3 },
+                jsPDF: { unit: 'mm', format: [80, 150], orientation: 'portrait' }
+            }).save();
+            Swal.fire('Cotización Lista', 'No se afectó el inventario', 'info');
         };
 
         document.getElementById('btnFinalizar').onclick = () => procesarTransaccion("efectivo");
         document.getElementById('btnCredito').onclick = () => procesarTransaccion("credito");
         document.getElementById('btnFactura').onclick = () => window.generarFacturaPDF();
+        document.getElementById('btnCotizacion').onclick = () => window.generarCotizacion();
 
         window.filtrarProductos = () => {
             const val = document.getElementById('searchBar').value.toLowerCase();
