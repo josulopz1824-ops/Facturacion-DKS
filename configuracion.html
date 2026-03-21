@@ -85,7 +85,7 @@
         let empresaID = "";
         let logoBase64 = "";
 
-        // Lógica de imagen
+        // Manejo de imagen (Sin cambios)
         document.getElementById('inputLogo').onchange = (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -107,13 +107,28 @@
         }
 
         async function cargarDatos() {
-            const user = await verificarPermisos();
-            if(user && user.empresa) {
+            try {
+                const user = await verificarPermisos();
+                
+                // CRÍTICO: Si el usuario no tiene empresaID, detenemos todo
+                if (!user || !user.empresa) {
+                    console.error("No se encontró ID de empresa para este usuario");
+                    return Swal.fire('Error de Sesión', 'No tienes una empresa asignada. Contacta al administrador.', 'error');
+                }
+
                 empresaID = user.empresa;
+                console.log("Cargando configuración para empresa:", empresaID);
+
+                // Limpiamos los campos antes de cargar para evitar ver datos residuales de otra empresa
+                document.getElementById('configForm').reset();
+                document.getElementById('imgPreview').style.display = "none";
+                document.getElementById('logoPlaceholder').style.display = "block";
+
+                // Referencia exacta al documento de ESTA empresa
                 const docRef = doc(db, "configuracion", empresaID);
                 const snap = await getDoc(docRef);
                 
-                if(snap.exists()) {
+                if (snap.exists()) {
                     const d = snap.data();
                     document.getElementById('confNombre').value = d.nombre || "";
                     document.getElementById('confRTN').value = d.rtn || "";
@@ -126,28 +141,38 @@
                         mostrarPreview(d.logo);
                     }
                 }
-            } else {
-                Swal.fire('Error', 'No se encontró una empresa vinculada.', 'error');
+            } catch (error) {
+                console.error("Error en cargarDatos:", error);
             }
         }
 
         document.getElementById('configForm').onsubmit = async (e) => {
             e.preventDefault();
-            if (!empresaID) return Swal.fire('Error', 'ID de empresa no identificado.', 'error');
+
+            // Bloqueo de seguridad: Si no hay ID, no guarda nada
+            if (!empresaID || empresaID === "") {
+                return Swal.fire('Error Grave', 'ID de empresa ausente. No se puede guardar.', 'error');
+            }
 
             try {
-                await setDoc(doc(db, "configuracion", empresaID), {
+                // Forzamos que la escritura sea exclusivamente en la ruta de la empresa actual
+                const docRef = doc(db, "configuracion", empresaID);
+                
+                const datosAEnviar = {
                     nombre: document.getElementById('confNombre').value.trim(),
                     rtn: document.getElementById('confRTN').value.trim(),
                     telefono: document.getElementById('confTel').value.trim(),
                     direccion: document.getElementById('confDir').value.trim(),
                     mensaje: document.getElementById('confMsg').value.trim(),
-                    logo: logoBase64
-                }, { merge: true });
+                    logo: logoBase64,
+                    idPertenece: empresaID // Marca de agua para auditoría
+                };
+
+                await setDoc(docRef, datosAEnviar, { merge: true });
                 
                 Swal.fire({
                     title: '¡Éxito!',
-                    text: 'Configuración actualizada correctamente.',
+                    text: 'Configuración de ' + (datosAEnviar.nombre || 'la empresa') + ' guardada.',
                     icon: 'success',
                     confirmButtonColor: '#d4af37'
                 });
