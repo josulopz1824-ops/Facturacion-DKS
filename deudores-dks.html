@@ -34,58 +34,52 @@
         }
 
         .cliente-info h2 { margin: 0; color: var(--dorado); font-size: 1.4rem; }
-        .productos-lista { color: #888; font-size: 0.9rem; margin: 10px 0; min-height: 40px; }
-        .monto-total { font-size: 1.8rem; font-weight: bold; margin: 10px 0; }
+        .productos-lista { color: #ccc; font-size: 0.85rem; margin: 10px 0; min-height: 40px; background: #1a1a1a; padding: 8px; border-radius: 5px; }
+        .monto-total { font-size: 1.8rem; font-weight: bold; margin: 10px 0; color: var(--success); }
         
         .btn-group { display: flex; gap: 10px; margin-top: 10px; }
         .btn-cobrar { background: var(--success); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; }
         .btn-abonar { background: var(--warning); color: white; border: none; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; flex: 1; }
 
-        /* Estilos Inputs para SweetAlert */
-        .swal-dks-input { width: 85%; background: #222 !important; color: white !important; border: 1px solid #444 !important; border-radius: 5px !important; padding: 10px !important; margin: 10px 0 !important; }
-        .swal-dks-select { width: 90%; background: #222; color: white; border: 1px solid var(--dorado); padding: 10px; border-radius: 5px; margin: 10px 0; }
+        /* Estilos Carrito Múltiple */
+        .cart-item { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; border-bottom: 1px dashed #444; padding: 6px 0; }
+        .btn-del { background: none; border: none; color: var(--danger); font-weight: bold; cursor: pointer; padding: 0 5px; font-size: 1rem; }
+        .swal-dks-input { width: 85%; background: #222 !important; color: white !important; border: 1px solid #444 !important; border-radius: 5px !important; padding: 10px !important; margin: 5px 0 !important; }
+        .swal-dks-select { width: 90%; background: #222; color: white; border: 1px solid var(--dorado); padding: 10px; border-radius: 5px; margin: 5px 0; }
     </style>
 </head>
 <body>
 
     <a href="dashboard.html" class="btn-home"><span>DASHBOARD</span></a>
-
     <button class="btn-add" id="btnNuevoFiado">+ REGISTRAR FIADO</button>
-
     <h1>Cuentas por Cobrar: <span id="nombreEmpresaLabel" style="color:var(--dorado)">...</span></h1>
     <div class="grid-deudores" id="contenedorDeudores"></div>
 
     <script type="module">
         import { db, verificarPermisos } from './auth-facturacion.js';
-        import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { collection, query, where, onSnapshot, doc, updateDoc, addDoc, getDocs, serverTimestamp, increment } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         let empresaActual = "";
         let listaProductos = [];
+        let carritoTemporal = [];
 
         async function iniciar() {
             const user = await verificarPermisos();
             if (user) {
                 empresaActual = user.empresa;
                 document.getElementById('nombreEmpresaLabel').innerText = user.nombreLocal || empresaActual;
-                
                 await cargarProductosDesdeInventario();
                 escucharDeudas();
             }
         }
 
-        // --- CONEXIÓN CON EL INVENTARIO ---
         async function cargarProductosDesdeInventario() {
-            // Usamos "productos" que es el nombre en tu otro archivo
             const q = query(collection(db, "productos"), where("empresa", "==", empresaActual));
             const snap = await getDocs(q);
             listaProductos = [];
             snap.forEach(d => {
                 const p = d.data();
-                listaProductos.push({
-                    id: d.id,
-                    nombre: p.nombre,
-                    precio: p.precio // Usamos "precio" como en tu inventario
-                });
+                listaProductos.push({ id: d.id, nombre: p.nombre, precio: p.precio, stock: p.stock });
             });
         }
 
@@ -99,11 +93,15 @@
                     if (data.estado !== "pagado") {
                         const id = documento.id;
                         const colorBorde = data.estado === "abonado" ? "var(--warning)" : "var(--danger)";
+                        const badgeVieja = data.esDeudaVieja ? `<span style="color:var(--warning); font-size:0.7rem; display:block;">[DEUDA VIEJA]</span>` : '';
+                        
                         contenedor.innerHTML += `
                             <div class="card-deuda" style="border-left: 5px solid ${colorBorde}">
                                 <div class="cliente-info">
-                                    <h2>${data.cliente}</h2>
-                                    <div class="productos-lista"><b>Llevó:</b> ${data.productos.join(", ")}</div>
+                                    <h2>${data.cliente} ${badgeVieja}</h2>
+                                    <div class="productos-lista">
+                                        ${data.productos.map(p => `<div>${p}</div>`).join('')}
+                                    </div>
                                 </div>
                                 <div>
                                     <div class="monto-total">L. ${parseFloat(data.total).toFixed(2)}</div>
@@ -118,65 +116,107 @@
             });
         }
 
-        // --- VENTANA DE REGISTRO CON DATOS DE INVENTARIO ---
         document.getElementById('btnNuevoFiado').onclick = async () => {
+            carritoTemporal = [];
             if (listaProductos.length === 0) await cargarProductosDesdeInventario();
 
-            let comboHtml = listaProductos.map(p => 
-                `<option value="${p.precio}|${p.nombre}">${p.nombre} (Precio: L. ${p.precio})</option>`
+            const { value: nombreCliente } = await Swal.fire({
+                title: 'Nombre del Cliente',
+                input: 'text',
+                background: '#121212',
+                color: '#fff',
+                confirmButtonColor: 'var(--dorado)',
+                showCancelButton: true
+            });
+
+            if (nombreCliente) abrirVentanaCarrito(nombreCliente);
+        };
+
+        async function abrirVentanaCarrito(cliente) {
+            let totalCarrito = carritoTemporal.reduce((acc, p) => acc + (p.precio * p.cantidad), 0);
+            let itemsHtml = carritoTemporal.map((p, index) => 
+                `<div class="cart-item">
+                    <span>${p.cantidad}x ${p.nombre}</span>
+                    <span>L. ${(p.precio * p.cantidad).toFixed(2)} <button class="btn-del" onclick="window.quitarDelCarrito(${index}, '${cliente}')">✕</button></span>
+                </div>`
             ).join('');
 
-            const { value: formValues } = await Swal.fire({
-                title: 'Nuevo Registro de Fiado',
+            let optionsHtml = listaProductos.map(p => `<option value="${p.id}">${p.nombre} (Stock: ${p.stock})</option>`).join('');
+
+            const { value: action } = await Swal.fire({
+                title: `Fiado: ${cliente}`,
                 background: '#121212',
                 color: '#fff',
                 html: `
-                    <input id="sw-nombre" class="swal-dks-input" placeholder="Nombre del Cliente">
-                    <select id="sw-prod" class="swal-dks-select">
-                        <option value="">-- Seleccionar del Inventario --</option>
-                        ${comboHtml}
-                    </select>
-                    <input id="sw-cant" type="number" class="swal-dks-input" placeholder="Cantidad" value="1">
+                    <div style="text-align: left; margin-bottom: 15px; border: 1px dashed var(--dorado); padding: 10px; border-radius: 8px;">
+                        <select id="sel-prod" class="swal-dks-select">${optionsHtml}</select>
+                        <input id="num-cant" type="number" class="swal-dks-input" placeholder="Cantidad" value="1">
+                        <button onclick="window.agregarAlCarrito('${cliente}')" class="btn-cobrar" style="padding: 8px; margin-top: 5px; width: 100%;">+ AÑADIR PRODUCTO</button>
+                    </div>
+                    <div id="lista-carrito" style="border: 1px solid #333; padding: 10px; max-height: 120px; overflow-y: auto; background: #000;">
+                        ${itemsHtml || '<span style="color: #666">Lista vacía</span>'}
+                    </div>
+                    <div style="margin-top: 15px; display: flex; align-items: center; justify-content: center; gap: 10px; background: #1a1a1a; padding: 10px; border-radius: 8px;">
+                        <input type="checkbox" id="chk-vieja" style="width: 20px; height: 20px; cursor: pointer;">
+                        <label for="chk-vieja" style="color: var(--warning); font-size: 0.9rem; cursor: pointer;">¿DEUDA VIEJA? (No descontar stock)</label>
+                    </div>
+                    <h2 style="color: var(--success); margin-top: 15px;">Total: L. ${totalCarrito.toFixed(2)}</h2>
                 `,
-                confirmButtonText: 'Guardar Deuda',
-                confirmButtonColor: 'var(--dorado)',
                 showCancelButton: true,
+                confirmButtonText: 'GUARDAR DEUDA',
+                confirmButtonColor: 'var(--success)',
                 preConfirm: () => {
-                    const cliente = document.getElementById('sw-nombre').value;
-                    const prodRaw = document.getElementById('sw-prod').value;
-                    const cant = document.getElementById('sw-cant').value;
-                    
-                    if (!cliente || !prodRaw || !cant) return Swal.showValidationMessage('Faltan datos');
-                    
-                    const [precio, nombreProd] = prodRaw.split('|');
-                    return { 
-                        cliente: cliente.toUpperCase(), 
-                        precio: parseFloat(precio), 
-                        articulo: nombreProd, 
-                        cantidad: parseFloat(cant) 
-                    };
+                    if (carritoTemporal.length === 0) return Swal.showValidationMessage('La lista está vacía');
+                    return { esDeudaVieja: document.getElementById('chk-vieja').checked };
                 }
             });
 
-            if (formValues) {
-                const totalFinal = formValues.precio * formValues.cantidad;
+            if (action) {
                 try {
                     await addDoc(collection(db, "deudas"), {
-                        cliente: formValues.cliente,
-                        productos: [`${formValues.cantidad}x ${formValues.articulo}`],
-                        total: totalFinal,
+                        cliente: cliente.toUpperCase(),
+                        productos: carritoTemporal.map(p => `${p.cantidad}x ${p.nombre}`),
+                        total: totalCarrito,
                         estado: "pendiente",
+                        esDeudaVieja: action.esDeudaVieja,
                         empresa: empresaActual,
                         fecha: serverTimestamp()
                     });
-                    Swal.fire('✅ Registrado', 'Cuenta actualizada.', 'success');
+
+                    if (!action.esDeudaVieja) {
+                        for (const item of carritoTemporal) {
+                            await updateDoc(doc(db, "productos", item.id), { stock: increment(-item.cantidad) });
+                        }
+                    }
+
+                    Swal.fire('✅ Registrado', action.esDeudaVieja ? 'Se anotó sin afectar stock.' : 'Deuda y stock actualizados.', 'success');
+                    cargarProductosDesdeInventario();
                 } catch (e) {
-                    Swal.fire('Error', 'No se pudo guardar.', 'error');
+                    Swal.fire('Error', e.message, 'error');
                 }
+            }
+        }
+
+        window.agregarAlCarrito = (cliente) => {
+            const id = document.getElementById('sel-prod').value;
+            const cant = parseFloat(document.getElementById('num-cant').value);
+            const producto = listaProductos.find(p => p.id === id);
+
+            if (producto && cant > 0) {
+                if (cant > producto.stock) {
+                    Swal.showValidationMessage(`Solo hay ${producto.stock} en inventario`);
+                    return;
+                }
+                carritoTemporal.push({ ...producto, cantidad: cant });
+                abrirVentanaCarrito(cliente);
             }
         };
 
-        // --- FUNCIONES DE ACCIÓN ---
+        window.quitarDelCarrito = (index, cliente) => {
+            carritoTemporal.splice(index, 1);
+            abrirVentanaCarrito(cliente);
+        };
+
         window.abonarDeuda = async (id, nombre, total) => {
             const { value: monto } = await Swal.fire({
                 title: `Abonar a ${nombre}`,
