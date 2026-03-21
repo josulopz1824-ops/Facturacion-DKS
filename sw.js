@@ -4,11 +4,15 @@ const urlsToCache = [
   '/index.html',
   '/global-styles.css',
   '/auth-facturacion.js',
-  '/caja-pro.html',           // IMPORTANTE: Agrega todas tus páginas
+  '/ventas-dks.html',           // IMPORTANTE: Agrega todas tus páginas
   '/inventario-ferretero.html',
   '/deudores-dks.html',
-  '/config.html',
+  '/configuracion.html',
   '/dashboard.html',
+  '/historial.html',
+  '/diario-ventas.html',
+  '/reportes.html',
+  '/logo-dks.png',
   'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
   'https://cdn.jsdelivr.net/npm/sweetalert2@11'
 ];
