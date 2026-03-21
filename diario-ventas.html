@@ -21,10 +21,11 @@
         .cliente-nombre { color: var(--dorado); font-size: 1.1rem; font-weight: bold; }
         .status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #000; }
         
-        .tabla-productos { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.85rem; color: #ccc; }
-        .tabla-productos th { text-align: left; color: var(--dorado); border-bottom: 1px solid #333; padding-bottom: 5px; }
-        .tabla-productos td { padding: 4px 0; border-bottom: 1px solid #222; }
+        .tabla-productos, .tabla-deudores { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 0.85rem; color: #ccc; }
+        .tabla-productos th, .tabla-deudores th { text-align: left; color: var(--dorado); border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .tabla-productos td, .tabla-deudores td { padding: 6px 0; border-bottom: 1px solid #222; }
 
+        .seccion-deudores { background: #1a1a1a; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px dashed var(--danger); }
         .resumen-final { background: #111; padding: 25px; border-radius: 12px; border: 1px solid var(--dorado); }
         .r-item { display: flex; justify-content: space-between; margin-bottom: 10px; }
         .saldo-info { font-size: 0.85rem; color: var(--danger); font-weight: bold; margin-top: 5px; display: block; }
@@ -47,6 +48,19 @@
         
         <div id="contenedorVentas">
             <p style="text-align:center; color:#555;">Sincronizando movimientos...</p>
+        </div>
+
+        <div class="seccion-deudores" id="seccionDeudores" style="display:none;">
+            <h4 style="margin-top:0; color: var(--danger);"><i class="fas fa-exclamation-triangle"></i> MAYORES DEUDORES DEL DÍA</h4>
+            <table class="tabla-deudores" id="tablaDeudores">
+                <thead>
+                    <tr>
+                        <th>Cliente</th>
+                        <th style="text-align:right">Saldo Pendiente</th>
+                    </tr>
+                </thead>
+                <tbody id="listaDeudores"></tbody>
+            </table>
         </div>
 
         <div class="resumen-final">
@@ -101,97 +115,84 @@
             const contenedor = document.getElementById('contenedorVentas');
             contenedor.innerHTML = "";
             let tContado = 0, tFiado = 0, tRecuperado = 0;
+            let deudoresMap = {};
 
             movimientosGlobales.forEach(v => {
-                const estado = (v.estado || "").toLowerCase().trim();
+                const estado = (v.estado || "pagado").toLowerCase().trim();
                 let clase = "", color = "var(--success)", txt = "EFECTIVO", htmlExtra = "";
+                const totalOperacion = Number(v.totalOriginal || v.total || 0);
 
-                if (estado === "pendiente") {
-                    clase = "card-pendiente"; color = "var(--danger)"; txt = "FIADO";
-                    tFiado += Number(v.total || 0);
+                if (estado === "pendiente" || estado === "abonado") {
+                    const saldo = Number(v.total || 0);
+                    const cliente = (v.cliente || "Anónimo").toUpperCase();
+                    
+                    // Lógica para tabla de deudores
+                    deudoresMap[cliente] = (deudoresMap[cliente] || 0) + saldo;
+                    tFiado += saldo;
+
+                    if (estado === "pendiente") {
+                        clase = "card-pendiente"; color = "var(--danger)"; txt = "FIADO";
+                    } else {
+                        clase = "card-abonado"; color = "var(--warning)"; txt = "ABONADO";
+                        const abono = Number(v.ultimoAbono || 0);
+                        tRecuperado += abono;
+                        htmlExtra = `<span style="color:var(--pago); font-weight:bold; display:block; margin-top:5px;">Abono Recibido: L. ${abono.toLocaleString()}</span>
+                                     <span class="saldo-info">Saldo Pendiente: L. ${saldo.toLocaleString()}</span>`;
+                    }
                 } 
-                else if (estado === "abonado") {
-                    clase = "card-abonado"; color = "var(--warning)"; txt = "ABONADO";
-                    const recaudadoHoy = Number(v.ultimoAbono || 0);
-                    const saldoPendiente = Number(v.total || 0);
-                    tRecuperado += recaudadoHoy;
-                    htmlExtra = `
-                        <span style="color:var(--pago); font-weight:bold; display:block; margin-top:5px;">Abono Recibido: L. ${recaudadoHoy.toLocaleString()}</span>
-                        <span class="saldo-info">Saldo Pendiente: L. ${saldoPendiente.toLocaleString()}</span>
-                    `;
-                } 
+                else if (estado === "saldado") {
+                    txt = "DEUDA SALDADA"; color = "var(--success)";
+                    tRecuperado += Number(v.ultimoAbono || 0);
+                }
                 else {
-                    tContado += Number(v.total || 0);
+                    tContado += totalOperacion;
                 }
 
-                // LÓGICA DE PRODUCTOS CON CÁLCULO DE PRECIOS PARA DEUDAS
+                // Renderizado de Productos (Optimizado)
                 let htmlProductos = "";
-                if (v.productos && Array.isArray(v.productos) && v.productos.length > 0) {
-                    const esFormatoObjeto = typeof v.productos[0] === 'object';
-                    
-                    htmlProductos = `
-                        <table class="tabla-productos">
-                            <thead>
-                                <tr>
-                                    <th>Cant.</th>
-                                    <th>Producto</th>
-                                    <th style="text-align:right">Precio Unit.</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${v.productos.map(p => {
-                                    if (esFormatoObjeto) {
-                                        // FORMATO VENTAS: Ya trae precio
-                                        return `
-                                            <tr>
-                                                <td>${p.cantidad} ${p.medida || ''}</td>
-                                                <td>${p.nombre}</td>
-                                                <td style="text-align:right">L. ${Number(p.precio || 0).toFixed(2)}</td>
-                                            </tr>`;
-                                    } else {
-                                        // FORMATO DEUDAS: Texto "1x Mouse"
-                                        const partes = p.split('x ');
-                                        const cant = partes.length > 1 ? parseFloat(partes[0]) : 1;
-                                        const nom = partes.length > 1 ? partes[1] : partes[0];
-                                        
-                                        // Cálculo: Total de la deuda / Cantidad total de items en el array
-                                        const precioSugerido = (Number(v.total || 0) / v.productos.length) / (cant || 1);
-
-                                        return `
-                                            <tr>
-                                                <td>${cant}</td>
-                                                <td>${nom}</td>
-                                                <td style="text-align:right">L. ${precioSugerido.toFixed(2)}</td>
-                                            </tr>`;
-                                    }
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                } else {
-                    htmlProductos = `<p style="font-size:0.8rem; color:#666;">Sin productos registrados</p>`;
+                if (v.productos && Array.isArray(v.productos)) {
+                    htmlProductos = `<table class="tabla-productos"><tbody>` + 
+                    v.productos.map(p => {
+                        if (typeof p === 'object') {
+                            return `<tr><td>${p.cantidad}</td><td>${p.nombre}</td><td style="text-align:right">L. ${Number(p.precio).toFixed(2)}</td></tr>`;
+                        } else {
+                            const partes = p.split('x ');
+                            const cant = partes.length > 1 ? parseFloat(partes[0]) : 1;
+                            const nom = partes.length > 1 ? partes[1] : partes[0];
+                            const precioSug = (totalOperacion / v.productos.length) / cant;
+                            return `<tr><td>${cant}</td><td>${nom}</td><td style="text-align:right">L. ${precioSug.toFixed(2)}</td></tr>`;
+                        }
+                    }).join('') + `</tbody></table>`;
                 }
 
                 const card = document.createElement('div');
                 card.className = `venta-card ${clase}`;
                 card.innerHTML = `
                     <div style="display:flex; justify-content:space-between">
-                        <div>
-                            <span class="cliente-nombre">${(v.cliente || "Consumidor Final").toUpperCase()}</span><br>
-                            <small style="color:#777">${v.fecha?.toDate().toLocaleTimeString()}</small>
-                        </div>
+                        <div><span class="cliente-nombre">${(v.cliente || "Consumidor Final").toUpperCase()}</span><br>
+                        <small style="color:#777">${v.fecha?.toDate().toLocaleTimeString()}</small></div>
                         <span class="status-badge" style="background:${color}">${txt}</span>
                     </div>
-                    
-                    ${htmlProductos}
-                    ${htmlExtra}
-
-                    <div style="text-align:right; font-weight:bold; color:${color}; border-top: 1px solid #333; margin-top:5px; padding-top:5px;">
-                        ${estado === 'abonado' ? 'OPERACIÓN CRÉDITO' : 'TOTAL: L. ' + Number(v.total || 0).toLocaleString()}
-                    </div>
-                `;
+                    ${htmlProductos} ${htmlExtra}
+                    <div style="text-align:right; font-weight:bold; color:${color}; border-top:1px solid #333; margin-top:5px; padding-top:5px;">
+                        VALOR OPERACIÓN: L. ${totalOperacion.toLocaleString()}
+                    </div>`;
                 contenedor.appendChild(card);
             });
+
+            // Llenar tabla de deudores
+            const listaD = document.getElementById('listaDeudores');
+            listaD.innerHTML = "";
+            const deudoresOrdenados = Object.entries(deudoresMap).sort((a,b) => b[1] - a[1]);
+            
+            if (deudoresOrdenados.length > 0) {
+                document.getElementById('seccionDeudores').style.display = "block";
+                deudoresOrdenados.forEach(([nom, saldo]) => {
+                    listaD.innerHTML += `<tr><td>${nom}</td><td style="text-align:right; font-weight:bold; color:var(--danger)">L. ${saldo.toLocaleString()}</td></tr>`;
+                });
+            } else {
+                document.getElementById('seccionDeudores').style.display = "none";
+            }
 
             document.getElementById('totalContado').innerText = `L. ${tContado.toLocaleString()}`;
             document.getElementById('totalRecuperado').innerText = `L. ${tRecuperado.toLocaleString()}`;
